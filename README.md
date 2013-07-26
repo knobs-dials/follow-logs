@@ -1,17 +1,27 @@
 follow_text_logs
 ================
 
-A wrapper around tail -F with some convenient behaviour:
-
-Looks in a few places for interesting logs.
-Saves some typing.
-
-Ignores binary stuff.
-Useful to avoid compressed logs garbling your terminal.
-
-Keeps checking the same places. When the set of matched filenames changes,
-it re-launches tail -F
-This can be useful for things that may create logs later, such as samba.  
+Convenience around tail.
+![follow_text_log](http://i152.photobucket.com/albums/s171/scarfboy/linkto_serious/follow_text_logs.png)
 
 
-Screenshot: 
+
+I got tired of typing `tail -F /var/log/*` and all the ancient logs and binary crud that would spit out.
+This script...
+- looks for system logs (e.g. /var/log)
+  and optionally optionally in your homedir  (typically just slow and includes nonsense, but can sometimes be pretty convenient)
+- checks whether they were recently written to  (by mtime)
+- ignores things that do not look like logs   (primarily just a text/binary check, to ignore things like compressed rotated logs)
+  (implementation could be smarter and faster)
+- optionally filters which files to show  (substring whitelist on their complete path)
+...then follows all the filenames that are left (a `tail` subprocess)
+
+
+Current experiment: it keeps checking the same places every ten seconds. 
+When the set of matched filenames has new files, it re-launches tail.
+This can be useful for things that may create logs later, such as samba.
+
+
+TODO:
+- Needs argument parsing
+- Figure out where other *nices put their logs and scan that be default
