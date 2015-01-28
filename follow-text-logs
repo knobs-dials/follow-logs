@@ -1,0 +1,314 @@
+#!/usr/bin/python
+"""
+Convenience around tail -F
+See README.md for basic description.
+
+
+sometimes you want a few specific logs
+   follow local0 www
+sometimes you want most except for a few verbose things
+   follow -apache -postgres -munin
+
+  
+"""
+
+import os
+import sys
+import subprocess
+import time
+import re
+import signal
+
+try: 
+    import setproctitle         # I like my tmux titles informative
+    setproctitle.setproctitle( os.path.basename(sys.argv[0]) )
+except ImportError:
+    pass
+
+
+
+
+### Helpers    
+
+blog = re.compile(r'\blog')
+
+def path_indicates_possible_log(filepath):
+    """ Used to clean up sources on homedirs
+        and other places where you may see mostly non-logs
+    """
+    # Blacklist text files that won't be logs.
+    # Never a complete list, but but speeds up what it can
+    if blog.search(filepath):
+        return True
+    if (filepath.endswith('.rb')  or filepath.endswith('.gemspec') or filepath.endswith('.conf') or
+        filepath.endswith('.cpp') or filepath.endswith('.py')      or
+        filepath.endswith('.svn-base') or filepath.endswith('.html')    or
+        filepath.endswith('.gif') or filepath.endswith('.jpg')     or filepath.endswith('.png')
+        ):
+        return False
+    if blog.search(filepath):
+        return True
+    if filepath.endswith('.OU') or filepath.endswith('.ER'): # Torque PBS
+        return True
+    return False
+
+
+def is_recent(filename, recency_minutes=60):
+    ''' Compares a file's mtime and ctime to the system clock,
+        returns true if the youngest of the two
+        is no longer than some amount of minutes ago
+    '''
+    stob = os.stat(filename)
+    latest_time = max([stob.st_mtime,stob.st_ctime])
+    tdiff_sec = int(time.time()-latest_time)
+    #print filename
+    #print 'latest change: ',latest_time
+    #print 'time ago:      ',round(tdiff_sec/3600., 1),'hours'
+    if tdiff_sec < (60.*recency_minutes):
+        return True
+    return False
+
+def islog_cheap_guess(filename=None,data=None, amt=200):
+    import helpers_path
+    return helpers_path.is_nonbinary(filename, data, amt)
+
+
+
+
+
+class Rescanner(object):
+    ''' The bulk of the logic.
+    '''
+    def __init__(self,
+                 scan_dirs=['/var/log'],
+                 add_home=False,
+                 whitelist_strings=None,
+                 blacklist_strings=None,                 
+                 recency_minutes=24.0*60.,
+                 background_check_interval_sec=20,
+                 nomatch_rescan_interval_sec=5,
+                 tail_interval_sec=0.7,
+                 verbose=False,
+                 ):
+        """ Constructor takes most settings.
+            add_home         - look in current user's home directory
+            recency_minutes  - log needs to be this young to be listed.   0/False/None means don't filter. 
+
+            If whitelist_strings isn't None or [], it is used as a whitelist of substrings
+            that have to appear somewhere in the path.
+            This lets you easily filter for some specific named logs (or directories)
+        
+            If background_check_interval_sec==None, we scan and follow at startup, once.
+                         is a number, we re-scan for the logs every that-many seconds
+        """
+        self.log_filenames = []
+        self.saw_new_filenames = False
+        self.most_recent_follower_process = None
+        
+        self.scan_dirs = scan_dirs
+        self.whitelist_strings = whitelist_strings
+        self.blacklist_strings = blacklist_strings
+        self.add_home = add_home
+        self.recency_minutes = recency_minutes
+        if background_check_interval_sec!=None:
+            background_check_interval_sec = max(1,background_check_interval_sec) # less than 1 second makes little sense.
+        self.background_check_interval_sec = background_check_interval_sec
+        self.nomatch_rescan_interval_sec = nomatch_rescan_interval_sec
+        self.tail_interval_sec = tail_interval_sec
+        self.verbose = verbose
+
+
+
+    def rescan(self):
+        """ Scans for logs with the configuration as listed in the obeject.
+            Returns matching filenames.
+        """
+        if self.verbose:
+            print "Finding",
+            if self.recency_minutes:
+                print "recently used",
+            print"files that look like logs...",
+
+        justnow_filenames = []
+        
+        if self.add_home: # TODO: we may want more restrictions here, e.g. looking only for filenames ending in .log
+            scan_dirs.append( os.path.expanduser('~') )
+        
+        for scan_dir in self.scan_dirs:
+            if self.verbose:
+                print "\n ...in %s"%scan_dir
+            try:
+                # this indexing also does most filtering
+                
+                for curdir, _, files in os.walk( os.path.abspath(scan_dir) ):
+                    for filename in files:
+                        fullpath = os.path.join(curdir,filename)
+
+                        # ONLY if whitelist is specified do we use it as a "only allow things that are in this"
+                        # (so it's white+black, all+black, or neither)
+                        if self.whitelist_strings!=None and len(self.whitelist_strings)>0:
+                            whitelist_condition = False
+                            for filtstr in self.whitelist_strings:
+                                if filtstr in fullpath:
+                                    whitelist_condition = True
+                                    break
+                            if not whitelist_condition:
+                                if self.verbose:
+                                    print "%60r  Doesn't match whitelist"%fullpath
+                                continue
+                        
+                        if self.blacklist_strings!=None and len(self.blacklist_strings)>0:
+                            blacklist_condition = False
+                            for filtstr in self.blacklist_strings:
+                                if filtstr in fullpath:
+                                    blacklist_condition=True
+                                    break
+                            if blacklist_condition:
+                                if self.verbose:
+                                    print "%60r  Matches blacklist"%fullpath
+                                continue                            
+                        
+                        # above the content guess. when this applies, we avoid file operations
+                        if self.recency_minutes:
+                            if not is_recent(fullpath, recency_minutes=recency_minutes):
+                                if self.verbose:
+                                    print "%60r  Not recent"%fullpath
+                                continue
+
+                        is_log = islog_cheap_guess(filename=fullpath)
+                        if is_log:
+                            if self.verbose:
+                                print "%60r  Looks good"%fullpath
+                            justnow_filenames.append(fullpath)
+                        else:
+                            if self.verbose:
+                                print "%60r  Does not look like log"%fullpath
+                                
+                                
+            except Exception, exception:
+                #if self.verbose:
+                sys.stderr.write( "Error (%s), ignoring..."%str(exception))
+                #raise
+
+        if self.verbose:           
+            print "\nDone, found %d"%len(justnow_filenames),
+            if recency_minutes:
+                print "recently used",
+            print "logs"
+
+        # Check whether we saw new filenames
+        #   we only care about seeing files we had not seen before,
+        #   as tail deals with and mentions disappearance, and now-silent logs are not shown.
+        new_files = set(justnow_filenames).difference( self.log_filenames )
+        if len(new_files)==0:
+            self.saw_new_filenames = False
+        else:
+            self.saw_new_filenames = True
+            
+        self.log_filenames = justnow_filenames
+
+
+    def scan_and_follow(self):
+        """ Scans, runs a tail subprocess on the result.
+        """
+        while True:
+            self.rescan() # updates some of our state
+
+            if self.verbose:
+                print "\nMatching log files: %r"%self.log_filenames
+        
+            if len(self.log_filenames)==0: # no matching logs at all.
+                # Usually means no matches when starting up because of overly strict filters
+                # can also mean all matching logs were removed.
+                # In either case, we keep rescanning
+                print "No matching logs, waiting until some do  (%d second interval)"%self.nomatch_rescan_interval_sec
+                time.sleep( self.nomatch_rescan_interval_sec )
+                # Arguably, if background_check_interval_sec==None we could just quit instead
+
+            elif not self.saw_new_filenames: # Matching files, but no new entries. Do nothing.
+                time.sleep( background_check_interval_sec )
+
+            else: # we noticed some new files, so (re-)launch tail
+                if self.most_recent_follower_process!=None:
+                    #print "New log files appeared, re-opening."
+                    #print "Killing previous follower, PID %d"%self.most_recent_follower_process.pid
+                    sys.stdout.write( 'restarting to follow %d logs\n'%len(self.log_filenames) )
+                    sys.stdout.flush()
+                    os.kill( self.most_recent_follower_process.pid, signal.SIGKILL )
+                else:
+                    sys.stdout.write( 'starting to follow %d logs\n'%len(self.log_filenames) )
+                    sys.stdout.flush()
+                
+                # sort by mtime, so that the last in the list is most likely to be visible when you start listening
+                # only makes sense when using tail -n with a value larger than 0
+                sorted_list = list( (e,os.stat(e).st_mtime)     for e in self.log_filenames)
+                sorted_list.sort( lambda a,b: cmp(a[1],b[1]) )
+                sorted_list = list(e[0] for e in sorted_list)
+                
+                #TODO: be compatible with simpler tail implementations (without -F)
+                cmd = ['tail','-F']  # follow name, not inode
+                cmd.extend(['--retry'])
+                cmd.extend(['-s','%.2f'%self.tail_interval_sec])
+                cmd.extend(['-n','10']) # only last line
+                cmd.extend( sorted_list )
+                
+                proc = subprocess.Popen(cmd, shell=False,
+                                       #creationflags=subprocess.CREATE_NEW_PROCESS_GROUP # apparently necessary for os.kill()ability
+                                       )
+                self.most_recent_follower_process = proc
+
+                #
+                if self.background_check_interval_sec==None: #do once and wait forever
+                    #print "FIRST; WAIT FOREVER"
+                    proc.wait()
+                else: #
+                    #print "CHANGE; SLEEP %.1f"%self.background_check_interval_sec
+                    time.sleep( self.background_check_interval_sec )
+
+
+
+if __name__=='__main__':
+    try:
+        #Defaults
+        add_home   = 0     # optional since it's slow and may turn up crud
+        recency_minutes      = 60*24.*7. # a week 
+        background_check_interval_sec = 20
+
+        if 'cluster-log' in sys.argv[0]: # different behaviour if symlinked under a different name
+            scan_dirs=[]
+            add_home=1
+            background_check_interval_sec=5
+            
+        else: # general behaviour: look for system logs only
+            scan_dirs = ['/var/log/',
+                         '/var/lib/log/',               #while we're at it, other potential directories
+                         # TODO: look on other *nices for entries to add here
+                        ]
+
+            wl = []
+            bl = []
+            for further_arg in sys.argv[1:]:
+                if further_arg[0]=='-': # this sort of blocks ever doing proper argument parsing. Think of another clear way of specifying negative
+                    bl.append(further_arg[1:])
+                else:
+                    wl.append(further_arg)
+
+            # TODO: proper argument parsing
+            # TODO: allow blacklist as well (e.g. 'everything except apache')
+
+
+        s = Rescanner( scan_dirs=scan_dirs,
+                       add_home=add_home,
+                       recency_minutes=recency_minutes,
+                       background_check_interval_sec=background_check_interval_sec,
+                       whitelist_strings=wl,
+                       blacklist_strings=bl,
+                       verbose=0,
+        )
+        
+        s.scan_and_follow()
+
+            
+    except KeyboardInterrupt:
+        print "\nBreaking"
+
