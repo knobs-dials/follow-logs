@@ -22,4 +22,4 @@ This can be useful for things that may create logs later, such as samba.
 
 TODO:
 - Needs argument parsing
-- figure out other aths to look for logs?
+- see about further paths to look for logs. Suggestions?
