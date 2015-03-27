@@ -1,9 +1,7 @@
 follow_text_logs
 ================
 
-Quickly follow (system) logs, without ancient or rotated-compressed stuff. Other than that it's tail -F :)
 ![follow_text_log](http://i152.photobucket.com/albums/s171/scarfboy/linkto_serious/follow_text_logs.png)
-
 
 This script...
 - looks for system logs (e.g. /var/log)
@@ -12,6 +10,9 @@ This script...
 - ignores things that do not look like logs (binary content, to ignore compressed logs)
 - optionally uses a whitelist specified by you (useful when working on specific projects)
 ...then follows all the filenames that are left (a `tail` subprocess)
+
+In other words: quickly follow the logs you want, avoid rotated and compressed stuff, other than that it's tail -F :)
+
 
 
 Current experiment: keep checking those criteria in the background.
