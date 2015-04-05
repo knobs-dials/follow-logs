@@ -9,6 +9,7 @@ In more detail:
 - checks whether they were recently written to  (by mtime, to ignore old and rotated logs)
 - ignores files that seem binary, to avoid compressed rotated logs and such
 - optionally uses a whitelist specified by you (useful when working on specific projects)
+
 ...then follows all the filenames that are left (a `tail` subprocess)
 
 - (experiment:) keep checking those criteria in the background.
