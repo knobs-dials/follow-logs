@@ -68,17 +68,48 @@ def is_recent(filename, recency_minutes=60):
         return True
     return False
 
+
 def islog_cheap_guess(filename=None,data=None, amt=200):
-    import helpers_path
-    return helpers_path.is_nonbinary(filename, data, amt)
+    """ Given either a filename or some data from it,
+        returns whether this is probably a text file or not.
+        Cheap imitation of file magic.
+        amt controls how much of data we use (or how much to read from the filename)
+    """
+    if data==None:
+        if filename==None:
+            raise ValueError("You need to give either a filename or some of the file's content data")
+        else:
+            f=open(filename)
+            data=f.read(amt)
+            f.close()
+    if data[:2]=='\x1f\x8b': # gzip magic
+        return False
+    elif data[:3]=='BZh':    # bzip2 magic.  There's also 'BZ0' for bzip1, but meh.
+        return False
+    # list of ordinals
+    ol = list(ord(ch) for ch in data[:amt])
+    printable,nonprintable=0,0
+    for o in ol:
+        if o>=0x20 and o<0x7f:
+            printable+=1
+        else:
+            nonprintable+=1
+    if nonprintable==0: #only printable - this is text.
+        return True
+    else:
+        # could be made slightly cleverer, but this is probably enough.
+        printable_ratio = float(printable)/float(nonprintable+printable)
+        if printable_ratio>0.95: # assume that's enough
+            return True
+        else:
+            return False
 
 
 
 
 
 class Rescanner(object):
-    ''' The bulk of the logic.
-    '''
+    ''' most of the filename scanning, filtering originates here'''
     def __init__(self,
                  scan_dirs=['/var/log'],
                  add_home=False,
@@ -131,7 +162,7 @@ class Rescanner(object):
 
         justnow_filenames = []
         
-        if self.add_home: # TODO: we may want more restrictions here, e.g. looking only for filenames ending in .log
+        if self.add_home: # TODO: we may want more restrictions for this path, e.g. looking only for filenames ending in .log
             scan_dirs.append( os.path.expanduser('~') )
         
         for scan_dir in self.scan_dirs:
@@ -270,14 +301,14 @@ class Rescanner(object):
 if __name__=='__main__':
     try:
         #Defaults
-        add_home   = 0     # optional since it's slow and may turn up crud
-        recency_minutes      = 60*24.*7. # a week 
+        add_home                      = 0         # optional since it's slow and may turn up crud
+        recency_minutes               = 60.*24*7 # a week 
         background_check_interval_sec = 20
 
-        if 'cluster-log' in sys.argv[0]: # different behaviour if symlinked under a different name
-            scan_dirs=[]
-            add_home=1
-            background_check_interval_sec=5
+        if 'cluster-log' in sys.argv[0]: # different behaviour if symlinked under this different name
+            scan_dirs = []
+            add_home = 1
+            background_check_interval_sec = 5
             
         else: # general behaviour: look for system logs only
             scan_dirs = ['/var/log/',
@@ -304,8 +335,7 @@ if __name__=='__main__':
                        whitelist_strings=wl,
                        blacklist_strings=bl,
                        verbose=0,
-        )
-        
+        )        
         s.scan_and_follow()
 
             
