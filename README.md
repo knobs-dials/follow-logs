@@ -1,22 +1,28 @@
-![follow_text_log](http://i152.photobucket.com/albums/s171/scarfboy/linkto_serious/follow_text_logs.png)
-
-Adds some things around tail -F
+Some niceness around tail -F
 - avoids old logs  (also implies most rotated logs)
-- avoids compressed logs
-- avoids binary files
+- avoids compressed logs and binary files
+- optional path substring whitelist. For example `follow-logs error local` will mostly get you apache error logs, and e.g. local0.log
 
 - optionally looks in your homedir (sometimes convenient, often just adds nonsense)
-- optionally uses a log substring whitelist 
-  (useful when working on specific projects)
 
-
-Current experiments:
-- keep checking those criteria in the background.
-  When the set of matched filenames has *more* files, it re-launches the tail.
-  Can be useful for things that create logs on the fly, such as samba.
+- re-launches the tail once more files on disk match the criteria. Useful for things that create logs on the fly, such as samba logs.
 
 
 TODO:
-- Needs argument parsing. Syntax will change.
+- Needs proper argument parsing. Syntax will change.
 
 - see about further default paths to look for logs. Suggestions?
+
+
+Example 
+
+```
+ # follow-logs loca err
+
+ ==> /var/log/apache2/munin.error <==
+ [Fri Apr 21 11:28:10.735998 2017] [:error] [pid 24665] [client 66.181.184.185:21300] script '/var/www/wiki-helpful/wp-login.php' not found or unable to stat
+
+ ==> /var/log/apache2/error.log <==
+ [Fri Apr 21 12:44:13.315519 2017] [:error] [pid 12392] [client 89.43.107.45:51899] script '/var/www/default/wp-login.php' not found or unable to stat
+
+```
