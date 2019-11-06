@@ -11,11 +11,11 @@ Example
 
 ```
 
-Some niceness around tail -F
+Some niceness around tail -F *
 - launches tail on a filtered set of files - and re-launches it if more files match later. (Useful for things that create logs on the fly, such as samba)
 
 - avoids old logs
-- avoids compressed logs and binary files
+- avoids compressed logs and binary files (note: without this tool, you might like to do tail -F *[^z])
 - optional path substring whitelist. For example `follow-logs error local` will mostly get you apache error logs, and e.g. local0.log
 
 - optionally looks in your homedir (sometimes convenient, often just adds nonsense)
