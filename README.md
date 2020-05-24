@@ -33,5 +33,5 @@
 - detangle code to ease adding further log sources
 
 ## SIDE NOTES:
-- `tail -F /var/log/*[^z]` goes a long way towards "avoid garbled shell" when you don't have this tool
+- `tail -F /var/log/*[^z2]` goes a long way towards "avoid garbled shell" when you don't have this tool
 
