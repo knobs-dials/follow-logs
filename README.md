@@ -11,16 +11,15 @@
 ```
 
 ## SUMMARY:
-- watches text files
+- watches text files in 
+  - mostly in /var/log
+  - optionally in homedir (sometimes convenient, often just adds nonsense)
   - avoids old files logs
   - avoids compressed logs and binary files, to avoid a garbled shell
 - watches systemd service unit names
 - relaunches repective log follower (tail, journalctl) when the set of matches changes
 
-- lets you filter what logs to follow (whitelist, blacklist)
-
-- optionally looks in your homedir (sometimes convenient, often just adds nonsense)
-
+- lets you filter what logs to follow via whitelist and blacklist substrings
 
 
 ## TODO:
