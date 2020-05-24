@@ -1,16 +1,5 @@
 #!/usr/bin/python
-"""
-Convenience around tail -F
-See README.md for basic description.
-
-
-sometimes you want a few specific logs
-   follow local0 www
-sometimes you want most except for a few verbose things
-   follow -apache -postgres -munin
-
-  
-"""
+" Convenience around tail -F  and  journalctl  "
 
 import os
 import sys
@@ -18,6 +7,8 @@ import subprocess
 import time
 import re
 import signal
+
+import helpers_path
 
 try: 
     import setproctitle         # I like my tmux titles informative
@@ -27,7 +18,28 @@ except ImportError:
 
 
 
+# TODO: create class like the below for systemd
 
+def systemd_check():
+    " returns paths to systemctl and journalctl.  If either is an empty string (probably both in practice), you should probably assume it's a  non-systemd system. "
+    proc = subprocess.Popen(['/usr/bin/which', 'systemctl'], stdout=subprocess.PIPE )
+    out1, _ = proc.communicate()
+    out1 = out1.strip()
+
+    proc = subprocess.Popen(['/usr/bin/which', 'journalctl'], stdout=subprocess.PIPE )
+    out2, _ = proc.communicate()
+    out2 = out2.strip()
+    return out1, out2
+    
+
+
+
+#units = journalctl_list('inf')
+#journalctl_follow( units )
+#sys.exit()
+
+
+        
 ### Helpers    
 
 blog = re.compile(r'\blog')
@@ -36,27 +48,25 @@ def path_indicates_possible_log(filepath):
     """ Used to clean up sources on homedirs
         and other places where you may see mostly non-logs
     """
-    # Blacklist text files that won't be logs.
-    # Never a complete list, but but speeds up what it can
+    # whitelist things we want to check
     if blog.search(filepath):
+        return True 
+    if filepath.endswith('.OU') or filepath.endswith('.ER'):  # Torque PBS
         return True
+    # Blacklist common files that won't be logs.   Never a complete list, but speeds up what it can
     if (filepath.endswith('.rb')  or filepath.endswith('.gemspec') or filepath.endswith('.conf') or
         filepath.endswith('.cpp') or filepath.endswith('.py')      or
         filepath.endswith('.svn-base') or filepath.endswith('.html')    or
         filepath.endswith('.gif') or filepath.endswith('.jpg')     or filepath.endswith('.png')
         ):
         return False
-    if blog.search(filepath):
-        return True
-    if filepath.endswith('.OU') or filepath.endswith('.ER'): # Torque PBS
-        return True
     return False
 
 
 def is_recent(filename, recency_minutes=60):
     ''' Compares a file's mtime and ctime to the system clock,
-        returns true if the youngest of the two
-        is no longer than some amount of minutes ago
+        returns true
+           if the youngest of the two is no longer than some amount of minutes ago
     '''
     stob = os.stat(filename)
     latest_time = max([stob.st_mtime,stob.st_ctime])
@@ -70,46 +80,15 @@ def is_recent(filename, recency_minutes=60):
 
 
 def islog_cheap_guess(filename=None,data=None, amt=200):
-    """ Given either a filename or some data from it,
-        returns whether this is probably a text file or not.
-        Cheap imitation of file magic.
-        amt controls how much of data we use (or how much to read from the filename)
-    """
-    if data==None:
-        if filename==None:
-            raise ValueError("You need to give either a filename or some of the file's content data")
-        else:
-            f=open(filename)
-            data=f.read(amt)
-            f.close()
-    if data[:2]=='\x1f\x8b': # gzip magic
-        return False
-    elif data[:3]=='BZh':    # bzip2 magic.  There's also 'BZ0' for bzip1, but meh.
-        return False
-    # list of ordinals
-    ol = list(ord(ch) for ch in data[:amt])
-    printable,nonprintable=0,0
-    for o in ol:
-        if o>=0x20 and o<0x7f:
-            printable+=1
-        else:
-            nonprintable+=1
-    if nonprintable==0: #only printable - this is text.
-        return True
-    else:
-        # could be made slightly cleverer, but this is probably enough.
-        printable_ratio = float(printable)/float(nonprintable+printable)
-        if printable_ratio>0.95: # assume that's enough
-            return True
-        else:
-            return False
+    return helpers_path.is_nonbinary(filename, data, amt)
 
 
 
 
 
 class Rescanner(object):
-    ''' most of the filename scanning, filtering originates here'''
+    ''' The bulk of the logic.
+    '''
     def __init__(self,
                  scan_dirs=['/var/log'],
                  add_home=False,
@@ -129,12 +108,10 @@ class Rescanner(object):
             that have to appear somewhere in the path.
             This lets you easily filter for some specific named logs (or directories)
         
-            If background_check_interval_sec==None, we scan and follow at startup, once.
-                         is a number, we re-scan for the logs every that-many seconds
         """
         self.log_filenames = []
         self.saw_new_filenames = False
-        self.most_recent_follower_process = None
+        self.most_recent_tail_process = None
         
         self.scan_dirs = scan_dirs
         self.whitelist_strings = whitelist_strings
@@ -144,13 +121,75 @@ class Rescanner(object):
         if background_check_interval_sec!=None:
             background_check_interval_sec = max(1,background_check_interval_sec) # less than 1 second makes little sense.
         self.background_check_interval_sec = background_check_interval_sec
-        self.nomatch_rescan_interval_sec = nomatch_rescan_interval_sec
+        self.nomatch_rescan_interval_sec = nomatch_rescan_interval_sec        
         self.tail_interval_sec = tail_interval_sec
         self.verbose = verbose
 
+        self._systemctl_path, self._journalctl_path = systemd_check()
+        self.is_systemd = (self._systemctl_path!=''  and  self._journalctl_path!=None)
+        self.log_units = []
+        self.most_recent_journalctl_process = None
+        
+        
+    def journalctl_list(self, striptype=False):
+        """ in class so we can reuse detected paths
+        """
+        proc = subprocess.Popen([self._systemctl_path, 'list-units', '--type=service', '--plain', '--no-legend', '--all'], stdout=subprocess.PIPE )
+        # --all means not just active
+        out, _ = proc.communicate()
+        ret = []
+        for line in out.splitlines():
+            line = line.rstrip()
+            unit, load, active, sub, description = line.split(None, 4)
+            typeless, _ = unit.rsplit('.',1)
+            if striptype: # from returned unit names
+                unit = typeless
 
+            if self.whitelist_strings!=None and len(self.whitelist_strings)>0:
+                whitelist_condition = False
+                for filtstr in self.whitelist_strings:
+                    if filtstr in typeless:
+                        whitelist_condition = True
+                        break
+                if not whitelist_condition:
+                    if self.verbose:
+                        print "%60r  Doesn't match whitelist"%unit
+                    continue
 
-    def rescan(self):
+            if self.blacklist_strings!=None and len(self.blacklist_strings)>0:
+                blacklist_condition = False
+                for filtstr in self.blacklist_strings:
+                    if filtstr in typeless:
+                        blacklist_condition=True
+                        break
+                if blacklist_condition:
+                    if self.verbose:
+                        print "%60r  Matches blacklist"%unit
+                    continue
+                
+            ret.append(unit)
+            
+        return ret
+    
+
+    def rescan_systemdunits(self):
+        if not self.is_systemd:
+            return
+        #TODO: integrate proper whitelist/blacklist logic
+        units_now = self.journalctl_list()
+        new_units = set(units_now).difference( self.log_units )
+        if len(new_units)==0:
+            self.saw_new_units = False
+        else:
+            self.saw_new_units = True
+            if self.verbose:
+                print "New units turned up: ", new_units
+                print "  unit set now", units_now
+        self.log_units = units_now
+
+        
+    
+    def rescan_filelogs(self):
         """ Scans for logs with the configuration as listed in the obeject.
             Returns matching filenames.
         """
@@ -162,7 +201,7 @@ class Rescanner(object):
 
         justnow_filenames = []
         
-        if self.add_home: # TODO: we may want more restrictions for this path, e.g. looking only for filenames ending in .log
+        if self.add_home: # TODO: we may want more restrictions here, e.g. looking only for filenames ending in .log
             scan_dirs.append( os.path.expanduser('~') )
         
         for scan_dir in self.scan_dirs:
@@ -170,7 +209,6 @@ class Rescanner(object):
                 print "\n ...in %s"%scan_dir
             try:
                 # this indexing also does most filtering
-                
                 for curdir, _, files in os.walk( os.path.abspath(scan_dir) ):
                     for filename in files:
                         fullpath = os.path.join(curdir,filename)
@@ -243,31 +281,60 @@ class Rescanner(object):
         """ Scans, runs a tail subprocess on the result.
         """
         while True:
-            self.rescan() # updates some of our state
+            self.rescan_systemdunits()                    
+            self.rescan_filelogs()     # updates some of our state
 
-            if self.verbose:
-                print "\nMatching log files: %r"%self.log_filenames
-        
-            if len(self.log_filenames)==0: # no matching logs at all.
+            if len(self.log_filenames)==0 and len(self.log_units)==0: # no matching logs at all.
                 # Usually means no matches when starting up because of overly strict filters
                 # can also mean all matching logs were removed.
                 # In either case, we keep rescanning
                 print "No matching logs, waiting until some do  (%d second interval)"%self.nomatch_rescan_interval_sec
-                time.sleep( self.nomatch_rescan_interval_sec )
-                # Arguably, if background_check_interval_sec==None we could just quit instead
+                # note: will skip both blocks below and do only the interval sleep
 
-            elif not self.saw_new_filenames: # Matching files, but no new entries. Do nothing.
-                time.sleep( background_check_interval_sec )
+            #if self.verbose:
+            #    print "\nMatching log files: %r"%self.log_filenames
+            #    #print "\nMatching systemd units: %r"%self.log_filenames
 
-            else: # we noticed some new files, so (re-)launch tail
-                if self.most_recent_follower_process!=None:
-                    #print "New log files appeared, re-opening."
-                    #print "Killing previous follower, PID %d"%self.most_recent_follower_process.pid
-                    sys.stdout.write( 'restarting to follow %d logs\n'%len(self.log_filenames) )
+            # ...there are >0 matching logs
+            
+            if not (self.saw_new_filenames or self.saw_new_units): # ...but nothing changed. Do nothing.
+                if self.verbose:
+                    print "\nNo changes in matching logs"
+                # note: will skip both blocks below and do only the interval sleep
+
+            # there are changes
+            
+            ### Systemd units ##########################
+            if self.saw_new_units:
+                if self.most_recent_journalctl_process!=None: 
+                    sys.stdout.write( 'restarting journalctl on %d logs\n'%len(self.log_filenames) )
                     sys.stdout.flush()
-                    os.kill( self.most_recent_follower_process.pid, signal.SIGKILL )
+                    os.kill( self.most_recent_journalctl_process.pid, signal.SIGKILL ) 
                 else:
-                    sys.stdout.write( 'starting to follow %d logs\n'%len(self.log_filenames) )
+                    sys.stdout.write( 'starting journalctl on %d logs\n'%len(self.log_filenames) )
+                    sys.stdout.flush()
+
+                cmd = [self._journalctl_path, '-f']
+                for unit in self.log_units:
+                    cmd.extend(['-u', unit])
+                print ' '.join(cmd)
+               
+                    
+                proc = subprocess.Popen(cmd, shell=False,
+                                       #creationflags=subprocess.CREATE_NEW_PROCESS_GROUP # apparently necessary for os.kill()ability
+                                       )
+                self.most_recent_journalctl_process = proc
+
+
+                
+            ### Log files ##############################
+            if self.saw_new_filenames:   # we noticed some new files, so (re-)launch tail
+                if self.most_recent_tail_process!=None: # "New log files appeared, re-opening."
+                    sys.stdout.write( 'restarting tail on %d logs\n'%len(self.log_filenames) )
+                    sys.stdout.flush()
+                    os.kill( self.most_recent_tail_process.pid, signal.SIGKILL ) # "Killing previous follower (%d)"%self.most_recent_tail_process.pid
+                else:
+                    sys.stdout.write( 'starting to tail %d logs\n'%len(self.log_filenames) )
                     sys.stdout.flush()
                 
                 # sort by mtime, so that the last in the list is most likely to be visible when you start listening
@@ -286,26 +353,25 @@ class Rescanner(object):
                 proc = subprocess.Popen(cmd, shell=False,
                                        #creationflags=subprocess.CREATE_NEW_PROCESS_GROUP # apparently necessary for os.kill()ability
                                        )
-                self.most_recent_follower_process = proc
+                self.most_recent_tail_process = proc
 
-                #
-                if self.background_check_interval_sec==None: #do once and wait forever
-                    #print "FIRST; WAIT FOREVER"
-                    proc.wait()
-                else: #
-                    #print "CHANGE; SLEEP %.1f"%self.background_check_interval_sec
-                    time.sleep( self.background_check_interval_sec )
+                
+            ### 
+            #print "CHANGE; SLEEP %.1f"%self.background_check_interval_sec
+            time.sleep( self.background_check_interval_sec )
 
 
+
+                    
 
 if __name__=='__main__':
     try:
         #Defaults
-        add_home                      = 0         # optional since it's slow and may turn up crud
-        recency_minutes               = 60.*24*7 # a week 
+        add_home   = 0     # optional since it's slow and may turn up crud
+        recency_minutes      = 60*24.*7. # a week 
         background_check_interval_sec = 20
 
-        if 'cluster-log' in sys.argv[0]: # different behaviour if symlinked under this different name
+        if 'cluster-log' in sys.argv[0]: # different behaviour if executable is linked as a different name
             scan_dirs = []
             add_home = 1
             background_check_interval_sec = 5
@@ -335,10 +401,17 @@ if __name__=='__main__':
                        whitelist_strings=wl,
                        blacklist_strings=bl,
                        verbose=0,
-        )        
+        )
+        
         s.scan_and_follow()
 
             
     except KeyboardInterrupt:
-        print "\nBreaking"
+        #print "\nBreaking"
+        if s.most_recent_tail_process != None:
+            #print "  killing tail"
+            os.kill( s.most_recent_tail_process.pid, signal.SIGKILL ) 
+        if s.most_recent_journalctl_process != None:
+            #print "  killing journalctl"
+            os.kill( s.most_recent_journalctl_process.pid, signal.SIGKILL ) 
 
