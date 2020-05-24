@@ -3,10 +3,10 @@
  # follow-logs loca err inf
 
  ==> /var/log/apache2/munin.error <==
- [Fri Apr 21 11:28:10.735998 2020] [:error] [pid 24665] [client 66.181.184.185:21300] script '/var/www/wiki-helpful/wp-login.php' not found or unable to stat
+ [Fri Apr 21 11:28:10.735998 2020] [:error] [pid 24665] [client 66.181.184.385:21300] script '/var/www/munin/wp-login.php' not found or unable to stat
 
  ==> /var/log/apache2/error.log <==
- [Fri Apr 21 12:44:13.315519 2020] [:error] [pid 12392] [client 89.43.107.45:51899] script '/var/www/default/wp-login.php' not found or unable to stat
+ [Fri Apr 21 12:44:13.315519 2020] [:error] [pid 12392] [client 89.43.107.345:51899] script '/var/www/default/wp-login.php' not found or unable to stat
 
 -- Logs begin at Sat 2020-04-21 12:20:18 CEST. --
 Fri Apr 21 12:44:13.315519 2020
