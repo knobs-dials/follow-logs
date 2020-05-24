@@ -1,4 +1,4 @@
-Example 
+One tool to give you all logs, and filter which to see.
 
 ```
  # follow-logs loca err
@@ -14,12 +14,10 @@ Example
 Some niceness around tail -F * and journalctl
 
 - watches text files
--- avoids old files logs
--- avoids compressed logs and binary files (note: without this tool, you might like to do tail -F *[^z])
-
-- watches systemd service units
-
-- relaunches repective log follower (tail, journalctl) when the set of logs changes
+  - avoids old files logs
+  - avoids compressed logs and binary files (note: without this tool, you might like to do tail -F *[^z])
+- watches systemd service unit names
+- relaunches repective log follower (tail, journalctl) when the set of matches changes
 
 - lets you filter what logs to follow (whitelist, blacklist)
 
@@ -28,7 +26,10 @@ Some niceness around tail -F * and journalctl
 
 
 TODO:
-- Needs proper argument parsing. Syntax will change.
+- proper argument parsing. Syntax will change.
 
 - see about further default paths to look for logs. Suggestions?
 
+
+CONSIDER:
+- writing my own tail so we can control output more (e.g. tab-separated with log name as first field)
