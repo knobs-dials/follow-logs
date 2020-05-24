@@ -1,6 +1,5 @@
-One tool to show you all logs (text logs via tail -F, journalctl for systemd), and filter which to see. 
-
 ```
+EXAMPLE
  # follow-logs loca err
 
  ==> /var/log/apache2/munin.error <==
