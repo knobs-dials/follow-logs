@@ -15,7 +15,7 @@ Some niceness around tail -F * and journalctl
 
 - watches text files
   - avoids old files logs
-  - avoids compressed logs and binary files (note: without this tool, you might like to do tail -F *[^z])
+  - avoids compressed logs and binary files, to avoid a garbled shell
 - watches systemd service unit names
 - relaunches repective log follower (tail, journalctl) when the set of matches changes
 
@@ -33,3 +33,9 @@ TODO:
 
 CONSIDER:
 - writing my own tail so we can control output more (e.g. tab-separated with log name as first field)
+
+
+
+SIDE NOTES:
+- `tail -F /var/log/*[^z]` goes a long way towards "avoid garbled shell" when you don't have this tool
+
