@@ -1,5 +1,5 @@
-```
 EXAMPLE
+```
  # follow-logs loca err
 
  ==> /var/log/apache2/munin.error <==
