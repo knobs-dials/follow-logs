@@ -1,4 +1,4 @@
-One tool to give you all logs, and filter which to see.
+One tool to show you all logs (text logs via tail -F, journalctl for systemd), and filter which to see. 
 
 ```
  # follow-logs loca err
@@ -11,8 +11,7 @@ One tool to give you all logs, and filter which to see.
 
 ```
 
-Some niceness around tail -F * and journalctl
-
+SUMMARY:
 - watches text files
   - avoids old files logs
   - avoids compressed logs and binary files, to avoid a garbled shell
