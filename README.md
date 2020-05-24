@@ -1,4 +1,4 @@
-EXAMPLE
+## EXAMPLE
 ```
  # follow-logs loca err
 
@@ -10,7 +10,7 @@ EXAMPLE
 
 ```
 
-SUMMARY:
+## SUMMARY:
 - watches text files
   - avoids old files logs
   - avoids compressed logs and binary files, to avoid a garbled shell
@@ -23,17 +23,17 @@ SUMMARY:
 
 
 
-TODO:
+## TODO:
 - proper argument parsing. Syntax will change.
 
 - see about further default paths to look for logs. Suggestions?
 
 
-CONSIDER:
+## CONSIDER:
 - writing my own tail so we can control output more (e.g. tab-separated with log name as first field)
 
 
 
-SIDE NOTES:
+## SIDE NOTES:
 - `tail -F /var/log/*[^z]` goes a long way towards "avoid garbled shell" when you don't have this tool
 
