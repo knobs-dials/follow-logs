@@ -27,7 +27,7 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
 
 
 ## TODO:
-- actually test that the systemd logic works
+- test that the systemd logic actually picks up new units
 
 - proper argument parsing. Syntax will change.
 
