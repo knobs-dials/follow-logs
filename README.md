@@ -19,7 +19,7 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
   - mostly in /var/log
   - optionally in homedir (sometimes convenient, often just adds nonsense)
   - avoids old files logs, by mtime
-  - avoids compressed logs and binary files, to avoid a garbled shell (note that `tail -F /var/log/*[^z2]` goes a long way towards "avoid garbled shell" when you don't have this tool)
+  - avoids compressed logs and binary files, to avoid a garbled shell (note that `tail -F /var/log/*[^z2]` goes a long way when you don't have this tool)
 - watches systemd service unit names
 - relaunches repective log follower (tail, journalctl) when the set of matches changes
 
