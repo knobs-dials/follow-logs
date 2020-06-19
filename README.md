@@ -21,15 +21,13 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
   - avoids old files logs, by mtime
   - avoids compressed logs and binary files, to avoid a garbled shell (note that `tail -F /var/log/*[^z2]` goes a long way when you don't have this tool)
 - watches systemd service unit names
+- lets you filter what files/units to consider via whitelist and blacklist substrings
 - relaunches repective log follower (tail, journalctl) when the set of matches increases
-- lets you filter what logs to follow via whitelist and blacklist substrings
 
 
 ## TODO:
 - test that the systemd logic actually picks up new units
-
-- proper argument parsing. Syntax will change.
-
+- add proper argument parsing. Syntax will change.
 - see about further default paths to look for logs. Suggestions?
 
 ## CONSIDER:
