@@ -1,3 +1,5 @@
+"Just show me relevant logs" in fewer keystrokes.
+
 ## EXAMPLE
 ```
  # follow-logs loca err inf
