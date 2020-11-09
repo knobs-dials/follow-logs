@@ -1,4 +1,4 @@
-"just show me relevant logs" in fewer keystrokes than usual.
+"just show me relevant logs" in fewer keystrokes.
 
 ## EXAMPLE
 ```
