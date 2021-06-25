@@ -30,7 +30,7 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
 - I've noticed that tail -F can lose track of files (even though it implies --retry). Investigate whether I'll need to write my own version after all.
 - test that the systemd logic actually picks up new units
 - add proper argument parsing. Syntax will change.
-- see about further default paths to look for logs. Suggestions?
+- consider further paths to look for logs. Suggestions?
 
 ## CONSIDER:
 - imitating tail in code, so we can control output better (e.g. tab-separated with log name as first field)
