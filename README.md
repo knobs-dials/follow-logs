@@ -1,4 +1,7 @@
-"just show me relevant logs" in fewer keystrokes, and will notice new logs.
+"just show me relevant logs" in fewer keystrokes.
+
+Will also pick up new matching logs.
+
 
 ## EXAMPLE
 ```
