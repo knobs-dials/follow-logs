@@ -31,3 +31,8 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
 
 - figure out how to stop journalctl reporting from non-units
 - detangle code to ease adding further log sources
+
+
+## Notes:
+- helpers_shellcolor is not required, but adds colors to source names, which helps visual parsing
+
