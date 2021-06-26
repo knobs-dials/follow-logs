@@ -4,7 +4,6 @@
   - **systemd logs**
 - Lets you **filter** filenames and unit names, including/excluding by substrings
 - Picks up new matching logs as they appear
-  - I broke some parts of that while rewriting -- working on it
 
 ## EXAMPLE
 ```  
