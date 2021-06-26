@@ -1,30 +1,29 @@
 "Just show me all relevant logs" in fewer keystrokes.
 - Reads from 
-  - **files** under /log/var (avoids compressed logs, binary files, and old logs) 
+  - **files** under `/log/var`, avoiding old logs, compressed logs, and binary files
   - **systemd logs**
 - Lets you **filter** filenames and unit names, including/excluding by substrings
 - Picks up new matching logs as they appear
 
 
 ## EXAMPLE
-```
- # follow-logs loca err inf
-
- ==> /var/log/apache2/munin.error <==
- [Tue Apr 21 11:28:10.735998 2020] [:error] [pid 24665] [client 66.181.184.385:21300] script '/var/www/munin/wp-login.php' not found or unable to stat
-
- ==> /var/log/apache2/error.log <==
- [Tue Apr 21 12:44:13.315519 2020] [:error] [pid 12392] [client 89.43.107.345:51899] script '/var/www/default/wp-login.php' not found or unable to stat
-
--- Logs begin at Tue 2020-04-21 12:20:18 CEST. --
-Tue Apr 21 12:44:13.315519 2020
-Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:47:37 +0200] "POST /write?db=test&precision=ms HTTP/1.1" 204 0 "-" "Python-urllib/2.7" 64db9bd3-9dcc-11ea-ae89-000000000000 2150
-
+```  # follow-logs -apache
+Changing journalctl to listen to 223 units
+Changing tail to listen to 74 files
+                error.log: [2021-06-26  17:39:36] INFO util/util_conv_string converting metadata from UTF-8 to ISO8859-1
+               [influxdb]: [retention] 2021/06/26 16:55:14 retention policy shard deletion check commencing
+            [laptop-mode]: Laptop mode
+            [laptop-mode]: enabled, not active [unchanged]
+            [syslog/CRON]: pam_unix(cron:session): session opened for user root by (uid=0)
+            [syslog/CRON]: pam_unix(cron:session): session closed for user root
+           munin-node.log: 2021/06/26-17:40:12 [748] Error output from netuser:
+           munin-node.log: 2021/06/26-17:40:12 [748]    cat: /dev/shm/munin_netuser_vals_conf: No such file or directory
+           munin-node.log: 2021/06/26-17:40:12 [748] Service 'netuser' exited with status 1/0.
 ```
 
 
 ## TODO:
-- add proper argument parsing. Syntax will change
+- add argument parsing. Syntax will change
   - including "ignore non-unit systemd messages"
 
 - 'start with n recent lines' in both log sources
