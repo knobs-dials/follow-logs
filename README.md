@@ -1,5 +1,7 @@
 "Just show me all relevant logs" in fewer keystrokes.
-- Reads from both **files** under /log/var (avoids compressed logs, binary files, and old logs) and from **systemd logs**
+- Reads from 
+  - **files** under /log/var (avoids compressed logs, binary files, and old logs) 
+  - **systemd logs**
 - Lets you **filter** filenames and unit names, including/excluding by substrings
 - Picks up new matching logs as they appear
 
