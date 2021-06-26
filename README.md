@@ -3,8 +3,8 @@
   - **files** under `/log/var`, avoiding old logs, compressed logs, and binary files
   - **systemd logs**
 - Lets you **filter** filenames and unit names, including/excluding by substrings
-- unified output format, coloring by source
 - Picks up new matching logs as they appear
+- unified output format, coloring by source
 
 ## EXAMPLE
 ```  
