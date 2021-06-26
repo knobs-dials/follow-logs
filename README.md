@@ -37,8 +37,8 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
 - ...and ingest journalctl ourselves, so we can unify formatting
 - add proper argument parsing. Syntax will change.
 - consider further paths to look for logs. Suggestions?
+- 'start with n recent lines' in both log sources
 
 ## CONSIDER:
 - detangle code to ease adding further log sources
-
 
