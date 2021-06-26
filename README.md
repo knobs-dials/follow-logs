@@ -1,7 +1,7 @@
 "Just show me all relevant logs" in fewer keystrokes.
 - Reads from 
   - **files** under `/log/var`, avoiding old logs, compressed logs, and binary files
-  - **systemd logs**
+  - **systemd logs** (by asking journalctl for json entries)
 - Lets you **filter** filenames and unit names, including/excluding by substrings
 - Picks up new matching logs as they appear
 
