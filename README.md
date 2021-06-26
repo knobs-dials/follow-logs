@@ -1,6 +1,8 @@
 "just show me relevant logs" in fewer keystrokes.
 
-Will also pick up new matching logs.
+Reads from files and from journalctl. 
+
+Also picks up new matching logs.
 
 
 ## EXAMPLE
