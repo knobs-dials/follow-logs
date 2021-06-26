@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 " Convenience around tail -F  and  journalctl  "
+#
 
 import os
 import sys
@@ -8,14 +9,14 @@ import re
 import signal
 import subprocess
 import json
-
-
+import argparse
 
 try:
     import helpers_shellcolor as sc
 except ImportError:
     sc = None
 
+    
 def print_message(source, message):
     " Unified pritner "
     # CONSIDER: detecting and doing 256 colors when we can
@@ -36,9 +37,7 @@ def print_message(source, message):
 
     
 class TailFollower(object):
-    """
-        Imitation of tail -F, because actual tail -F seems to give up when we don't want it to.
-        TODO: proper tests
+    """ Imitation of tail -F, because actual tail -F seems to give up when we don't want it to.  Could stand some further testing.
     """
     def __init__(self):
         self.data = {} # filename -> ( fob, inode )
@@ -58,7 +57,6 @@ class TailFollower(object):
             fob.close()
         del self.data[filename]
         
-            
     def update(self):
         ''' one cycle of dealing with what changed '''
         # should deal with
@@ -109,7 +107,6 @@ class TailFollower(object):
                 except (ValueError,) as e: # if the file disappears after the exists check, things like the tell and read will fail instead. TODO: figure out all possible exceptions
                     pass
                     
-            
     def start_thread(self, interval_sec=0.5):
         " if you're not in a position to regularly call update(), you can get this thread to do it for you "
         import threading
@@ -127,7 +124,6 @@ class TailFollower(object):
 
     
 class JournalctlReader(object):
-
     def __init__(self):
         self.pid = None
         self.proc = None
@@ -143,10 +139,10 @@ class JournalctlReader(object):
             #b'-n',b'10', # show n last entries
             b'-f'
         ]
-        #cmd.extend( units )
-        self.proc = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE
-                                       #creationflags=subprocess.CREATE_NEW_PROCESS_GROUP # apparently necessary for os.kill()ability
-                                       )
+        for unit in units:
+            cmd.extend( ['-u', unit] )
+        #print( cmd )
+        self.proc = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE)
         
     def update(self):
         ''' one cycle of dealing with what changed '''
@@ -158,6 +154,7 @@ class JournalctlReader(object):
                 msg  = d.get('MESSAGE')
                 
                 # I'm still figuring out which fields are present when (docs don't really say)
+                
                 #   and in the process, these are spammy:
                 for debug_remove in ('__CURSOR', '__REALTIME_TIMESTAMP', '__MONOTONIC_TIMESTAMP', '_SOURCE_MONOTONIC_TIMESTAMP', '_BOOT_ID', '_MACHINE_ID', '_HOSTNAME'):
                     if debug_remove in d:
@@ -208,6 +205,7 @@ class JournalctlReader(object):
                     #print( d ) # figuring out the fields
                     sourcename = transport
 
+                    
                 print_message( '[%s]'%sourcename, msg )
 
             except (ValueError, KeyError) as e:
@@ -237,7 +235,7 @@ except ImportError:
     pass
 
 
-# CONSIDER: make members of main class
+# CONSIDER: make members of main class, the scopey references are a little ugly
 tf = TailFollower()
 tf.start_thread( )
 
@@ -327,15 +325,10 @@ def is_nonbinary(filename=None, data=None, amt=200):
         else:
             return False
 
-        
 def islogfile_cheapguess(filename=None,data=None, amt=200):
     return is_nonbinary(filename, data, amt)
 
 
-
-
-
-# CONSIDER: structure by creating class like the below for systemd  (and consider extensibility for others)
 
 
 class Rescanner(object):
@@ -343,10 +336,10 @@ class Rescanner(object):
     def __init__(self,
                  scan_dirs=[b'/var/log'],
                  add_home=False,
-                 whitelist_strings=None,
-                 blacklist_strings=None,                 
+                 onlys=None,
+                 nots=None,                 
                  recency_minutes=24.0*60.,
-                 background_check_interval_sec=20,
+                 check_interval_sec=20,
                  nomatch_rescan_interval_sec=5,
                  verbose=False,
                  ):
@@ -354,10 +347,9 @@ class Rescanner(object):
             add_home         - look in current user's home directory
             recency_minutes  - log needs to be this young to be listed.   0/False/None means don't filter. 
 
-            If whitelist_strings isn't None or [], it is used as a whitelist of substrings
+            If onlys isn't None or [], it is used as a whitelist of substrings
             that have to appear somewhere in the path.
             This lets you easily filter for some specific named logs (or directories)
-        
         """
         self.verbose = verbose
 
@@ -367,12 +359,12 @@ class Rescanner(object):
         self.scan_dirs = scan_dirs
         self.recency_minutes = recency_minutes
         
-        self.whitelist_strings = whitelist_strings
-        self.blacklist_strings = blacklist_strings
+        self.onlys = onlys
+        self.nots = nots
         
-        if background_check_interval_sec!=None:
-            background_check_interval_sec = max(1,background_check_interval_sec) # less than 1 second makes little sense.
-        self.background_check_interval_sec = background_check_interval_sec
+        if check_interval_sec!=None:
+            check_interval_sec = max(1,check_interval_sec) # less than 1 second makes little sense.
+        self.check_interval_sec = check_interval_sec
         self.nomatch_rescan_interval_sec = nomatch_rescan_interval_sec
         
         proc = subprocess.Popen(['/usr/bin/which', 'systemctl'], stdout=subprocess.PIPE )
@@ -397,9 +389,9 @@ class Rescanner(object):
             if striptype: # from returned unit names
                 unit = typeless
 
-            if self.whitelist_strings!=None and len(self.whitelist_strings)>0:
+            if self.onlys!=None and len(self.onlys)>0:
                 whitelist_condition = False
-                for filtstr in self.whitelist_strings:
+                for filtstr in self.onlys:
                     if filtstr in typeless:
                         whitelist_condition = True
                         break
@@ -408,9 +400,9 @@ class Rescanner(object):
                         print( "%60r  Doesn't match whitelist"%unit )
                     continue
 
-            if self.blacklist_strings!=None and len(self.blacklist_strings)>0:
+            if self.nots!=None and len(self.nots)>0:
                 blacklist_condition = False
-                for filtstr in self.blacklist_strings:
+                for filtstr in self.nots:
                     if filtstr in typeless:
                         blacklist_condition=True
                         break
@@ -468,9 +460,9 @@ class Rescanner(object):
                     
                         # ONLY if whitelist is specified do we use it as a "only allow things that are in this"
                         # (so it's white+black, all+black, or neither)
-                        if self.whitelist_strings!=None and len(self.whitelist_strings)>0:
+                        if self.onlys!=None and len(self.onlys)>0:
                             whitelist_condition = False
-                            for filtstr in self.whitelist_strings:
+                            for filtstr in self.onlys:
                                 #print('%r %r'%(filtstr,fullpath))
                                 if filtstr in fullpath:
                                     whitelist_condition = True
@@ -480,9 +472,9 @@ class Rescanner(object):
                                     print( "%60r  Doesn't match whitelist"%fullpath )
                                 continue
                         
-                        if self.blacklist_strings!=None and len(self.blacklist_strings)>0:
+                        if self.nots!=None and len(self.nots)>0:
                             blacklist_condition = False
-                            for filtstr in self.blacklist_strings:
+                            for filtstr in self.nots:
                                 if filtstr in fullpath:
                                     blacklist_condition=True
                                     break
@@ -567,55 +559,95 @@ class Rescanner(object):
             
             ### 
             if self.verbose:
-                print( "Sleeping %.1f"%self.background_check_interval_sec )
-            time.sleep( self.background_check_interval_sec )
+                print( "Sleeping %.1f"%self.check_interval_sec )
+            time.sleep( self.check_interval_sec )
 
 
 
                     
 
 if __name__=='__main__':
+    def parse_hms(v):
+        ''' string interval spec to seconds, e.g.  
+             '1h30m' -> 5400, 
+             '1 day, 30 min, 4 sec' -> 88204
+            Very naive implementation (just looks for words starting with w,d,h,m,s)
+        '''
+        ret_sec = 0
+        things = re.findall(r'([0-9.]+)\s*([a-z]+)[,;\s-]*', v.lower())
+        if len(things)==0:
+            try:
+                ret_sec = float(v) # see if it's unitless, interpret as seconds
+            except:
+                raise ValueError("don't understand value %r"%unit)
+        for num,unit in things:
+            #print num,unit
+            n = float(num)
+            if unit[0]=='w':
+                n *= 60*60*24*7
+            elif unit[0]=='d':
+                n *= 60*60*24
+            elif unit[0]=='h':
+                n *= 60*60
+            elif unit[0]=='m':
+                n *= 60
+            elif unit[0]=='s':
+                pass
+            else:
+                raise ValueError("don't understand time unit %r"%unit)
+            ret_sec += n
+        return ret_sec
+    
+
     try:
-        #Defaults
-        add_home   = 0     # optional since it's slow and may turn up crud
-        recency_minutes      = 60*24.*7. # a week 
-        background_check_interval_sec = 20
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--recency",        action="store",      default="1w",  help="Ignore logs with mtime/ctime older than this")
+        parser.add_argument("--check-interval", action="store",      default="30s", help="Check for log source changes every this often")
+        parser.add_argument("--home",           action="store_true", default=False, help="look for log-ish text files in homedir. Defaults off since it's slow and may turn up crud.")
+        parser.add_argument("--scandirs",       action="store",      default="/var/log/,/var/lib/log/",  help="Paths to look for logs under, comma-separated. Defaults to /var/log/,/var/lib/log/ ")
+        parser.add_argument('-o',"--onlys",     action="store",      default=None,  help="if specified, matches only names with one of these substrings (comma separated)")
+        parser.add_argument('-n',"--nots",      action="store",      default=None,  help="if specified, everything except names with one of these substrings (comma separated)")
+        #parser.add_argument('-t', "--time",    action="store_true",  default=False,  help="Print time")
+        parser.add_argument('-v', "--verbose",  action="store_true",  default=False,  help="Debug verbosity")
+        args = parser.parse_args()
+        
+        #print( args )
+        
+        check_interval  = parse_hms( args.check_interval )
+        recency_minutes = parse_hms( args.recency ) / 60.
+        
+        scan_dirs       = args.scandirs.split(',')
+        
+        #if 'cluster-log' in sys.argv[0]: # different behaviour if executable is linked as a different name
+        #    scan_dirs = []
+        #    add_home = 1
 
-        if 'cluster-log' in sys.argv[0]: # different behaviour if executable is linked as a different name
-            scan_dirs = []
-            add_home = 1
-            background_check_interval_sec = 5
+        onlys, nots = [], []
+        if args.onlys:
+            onlys = args.onlys.split(',')
+        if args.nots:
+            nots  = args.nots.split(',')
             
-        else: # general behaviour: look for system logs only
-            scan_dirs = ['/var/log/',                    # seems to cover linux, bsd, osx
-                         '/var/lib/log/',                # while we're at it, other potential directories
-                         #b'/var/lib/docker/containers/', # JSON, though
-                         # TODO: look on other *nices for entries to add here
-                        ]
-
-            wl = []
-            bl = []
-            for further_arg in sys.argv[1:]:
-                if further_arg[0]=='-': # this sort of blocks ever doing proper argument parsing. Think of another clear way of specifying negative
-                    bl.append(further_arg[1:])
-                else:
-                    wl.append(further_arg)
-
-            # TODO: proper argument parsing
-            # TODO: allow blacklist as well (e.g. 'everything except apache')
-
-        s = Rescanner( scan_dirs=scan_dirs,
-                       add_home=add_home,
-                       recency_minutes=recency_minutes,
-                       background_check_interval_sec=background_check_interval_sec,
-                       whitelist_strings=wl,
-                       blacklist_strings=bl,
-                       verbose=0,
+        if 0:
+            print( check_interval )
+            print( recency_minutes )
+            print( scan_dirs )
+            print( onlys )
+            print( nots )
+        
+        s = Rescanner( scan_dirs          = scan_dirs,
+                       add_home           = args.home,
+                       recency_minutes    = recency_minutes,
+                       check_interval_sec = check_interval,
+                       onlys              = onlys,
+                       nots               = nots,
+                       verbose            = args.verbose,
         )
         
+        print( "Looking for logs..." )
         s.scan_and_follow()
 
-            
+        
     except KeyboardInterrupt:
         pass
         # shutdown threads?
