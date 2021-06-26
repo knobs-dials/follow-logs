@@ -2,7 +2,7 @@
 - Reads from 
   - **files** under `/log/var`, avoiding old logs, compressed logs, and binary files
   - **systemd logs**
-- Lets you **filter** filenames and unit names, including/excluding by substrings
+- Lets you **filter** filenames and unit names, including/excluding by substrings (in absolute pathname, and unit name)
 - Picks up new matching logs as they appear
 - unified output format, coloring by source
 
