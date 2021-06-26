@@ -601,27 +601,21 @@ if __name__=='__main__':
 
     try:
         parser = argparse.ArgumentParser()
-        parser.add_argument("--recency",        action="store",      default="1w",  help="ignore logs with mtime/ctime older than this")
-        parser.add_argument("--check-interval", action="store",      default="30s", help="check for log source changes every this often")
-        parser.add_argument("--home",           action="store_true", default=False, help="look for log-ish text files in homedir, defaults off since it's slow and may turn up crud.")
-        parser.add_argument("--scandirs",       action="store",      default="/var/log/,/var/lib/log/",  help="paths to look for logs under, comma-separated, defaults to /var/log/,/var/lib/log/ ")
-        parser.add_argument('-o',"--onlys",     action="store",      default=None,  help="if specified, matches only names with one of these substrings (comma separated)")
-        parser.add_argument('-n',"--nots",      action="store",      default=None,  help="if specified, everything except names with one of these substrings (comma separated)")
-        #parser.add_argument('-t', "--time",    action="store_true",  default=False,  help="Print time")
+        parser.add_argument('-o',"--onlys",     action="store",       default=None,  help="if specified, matches only names with one of these substrings (comma separated)")
+        parser.add_argument('-n',"--nots",      action="store",       default=None,  help="if specified, everything except names with one of these substrings (comma separated)")
+        parser.add_argument("--recency",        action="store",       default="1w",  help="ignore logs with mtime/ctime older than this")
+        parser.add_argument("--check-interval", action="store",       default="30s", help="check for log source changes every this often")
+        parser.add_argument("--scandirs",       action="store",       default="/var/log/,/var/lib/log/",  help="paths to look for logs under, comma-separated, defaults to /var/log/,/var/lib/log/ ")
+        parser.add_argument("--home",           action="store_true",  default=False, help="look for log-ish text files in homedir, defaults off since it's slow and may turn up crud.")
         parser.add_argument('-v', "--verbose",  action="store_true",  default=False,  help="debug verbosity")
         args = parser.parse_args()
         
-        #print( args )
-        
         check_interval  = parse_hms( args.check_interval )
         recency_minutes = parse_hms( args.recency ) / 60.
-        
         scan_dirs       = args.scandirs.split(',')
-        
         #if 'cluster-log' in sys.argv[0]: # different behaviour if executable is linked as a different name
         #    scan_dirs = []
         #    add_home = 1
-
         onlys, nots = [], []
         if args.onlys:
             onlys = args.onlys.split(',')
