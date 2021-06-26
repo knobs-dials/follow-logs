@@ -1,7 +1,7 @@
 "Just show me all relevant logs" in fewer keystrokes:
-- Reads from both files under /log/var (avoids compressed logs and binary files) and from journalctl.
-- Lets you filter files and units to include/exclude, by substrings
-- Picks up new matching logs as they appear.
+- Reads from both files under /log/var (avoids compressed logs and binary files) and from journalctl
+- Lets you filter filenames and unit names, including/excluding by substrings
+- Picks up new matching logs as they appear
 
 
 ## EXAMPLE
