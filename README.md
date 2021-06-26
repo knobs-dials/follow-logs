@@ -1,8 +1,10 @@
-"just show me relevant logs" in fewer keystrokes.
+"just show me relevant logs" in fewer keystrokes:
 
-Reads from files and from journalctl. 
+Reads from both files (avoids compressed logs and binary files) and from journalctl.
 
-Also picks up new matching logs.
+Lets you filter files and units to include/exclude, by substrings
+
+Picks up new matching logs as they appear.
 
 
 ## EXAMPLE
@@ -20,15 +22,6 @@ Tue Apr 21 12:44:13.315519 2020
 Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:47:37 +0200] "POST /write?db=test&precision=ms HTTP/1.1" 204 0 "-" "Python-urllib/2.7" 64db9bd3-9dcc-11ea-ae89-000000000000 2150
 
 ```
-
-## SUMMARY:
-- looks for log files
-  - mostly in /var/log,   optionally in homedir (sometimes convenient, often just adds nonsense)
-  - avoids compressed logs and binary files, to avoid a garbled shell (note that `tail -F /var/log/*[^z2]` goes a long way when you don't have this tool)
-  - avoids old files logs, by mtime
-- watches systemd service unit names
-- lets you filter files and units to include/exclude, by substrings
-- ...and changes which files/units to follow when that set of matches increases
 
 ## TODO:
 - test that the systemd logic actually picks up new units
