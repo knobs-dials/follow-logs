@@ -31,14 +31,13 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
 
 ## TODO:
 - test that the systemd logic actually picks up new units
-- I've noticed that tail -F can lose track of files (even though it implies --retry). Investigate whether I'll need to write my own version after all.
+- I've noticed that tail -F can lose track of files (even though it implies --retry)
+  - write my own tail code in python
+- ...and ingest journalctl ourselves so we can unify formatting
 - add proper argument parsing. Syntax will change.
 - consider further paths to look for logs. Suggestions?
 
 ## CONSIDER:
-- imitating tail in code, so we can control output better (e.g. tab-separated with log name as first field)
-- (if we do), make journalctl spit out json so that we can format in in the same way
-
 - detangle code to ease adding further log sources
 
 
