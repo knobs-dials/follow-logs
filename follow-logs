@@ -153,7 +153,7 @@ class JournalctlReader(object):
                 transport = d.get('_TRANSPORT',None)
                 if transport=='journal':
                     #print( d ) # figuring out the fields
-                    sourcename = d.get('UNIT',None)        #sourcename = d.get('_SYSTEMD_UNIT',None) # this seems to be a scope. Um?
+                    sourcename = d.get('UNIT','unknown unit')        #sourcename = d.get('_SYSTEMD_UNIT',None) # this seems to be a scope. Um?
                     if sourcename.endswith('.service'):
                         sourcename = sourcename[:-8]
                         
@@ -540,11 +540,14 @@ class Rescanner(object):
             else:
                 
                 if self.saw_new_units:
+                    #if self.verbose:
                     sys.stdout.write( 'Changing journalctl to listen to %d units\n'%len(self.log_units) )
                     sys.stdout.flush()
                     jr.change( self.log_units )
 
                 if self.saw_new_filenames:
+                    sys.stdout.write( 'Changing tail to listen to %d files\n'%len(self.log_filenames) )
+                    sys.stdout.flush()
                     for filename in self.log_filenames: # thigns we already listen to will be ignored
                         tf.add_filename( filename )
             
