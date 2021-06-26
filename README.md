@@ -22,7 +22,7 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
 
 
 ## TODO:
-- write my own tail code in python, because the call to an external `tail -F` lose track of files (even though it implies --retry)
+- write my own tail code in python, because the call to an external `tail -F` loses track of files (even though it implies --retry)
 - ...and ingest journalctl ourselves, to unify formatting
 
 - add proper argument parsing. Syntax will change
