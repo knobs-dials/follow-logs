@@ -7,7 +7,8 @@
 
 
 ## EXAMPLE
-```  # follow-logs -apache
+```  
+# follow-logs -apache
 Changing journalctl to listen to 223 units
 Changing tail to listen to 74 files
                 error.log: [2021-06-26  17:39:36] INFO util/util_conv_string converting metadata from UTF-8 to ISO8859-1
