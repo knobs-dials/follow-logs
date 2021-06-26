@@ -45,9 +45,7 @@ optional arguments:
 ```
 
 ## TODO:
-- add argument parsing. Syntax will change
-  - including "ignore non-unit systemd messages"
-  - 'start with n recent lines' in both log sources
+- 'start with n recent lines when opening logs' in both log sources
 
 - check that the systemd logic actually picks up new units
 
