@@ -1,58 +1,252 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 " Convenience around tail -F  and  journalctl  "
 
 import os
 import sys
-import subprocess
 import time
 import re
 import signal
+import subprocess
+import json
 
-import helpers_path
+
+
+try:
+    import helpers_shellcolor as sc
+except ImportError:
+    sc = None
+
+def print_message(source, message):
+    " Unified pritner "
+    # CONSIDER: detecting and doing 256 colors when we can
+    # CONSIDER: I didn't I have a function for this?
+    alisource = '%25s'%source
+    if sc==None: # don't break if that color helper isn't there
+        sys.stdout.write( alisource  )
+    else:
+        color_funcs = [ sc.blue, sc.red, sc.green, sc.cyan, sc.magenta, sc.yellow, sc.brightblue, sc.brightred, sc.brightcyan, sc.brightmagenta, sc.brightyellow, sc.brightgreen ]
+        strhash = sum( ord(ch)  for ch in source )
+        sys.stdout.write( color_funcs[strhash%len(color_funcs)]( alisource ) )
+    sys.stdout.write( ': ')
+    sys.stdout.write( message.rstrip() )
+    sys.stdout.write( '\n')
+    sys.stdout.flush()
+    
+
+
+    
+class TailFollower(object):
+    """
+        Imitation of tail -F, because actual tail -F seems to give up when we don't want it to.
+        TODO: proper tests
+    """
+    def __init__(self):
+        self.data = {} # filename -> ( fob, inode )
+        
+    def add_filename(self, filename):
+        if not os.path.exists(filename):
+            raise OSError('File does not exist')
+        if filename not in self.data:
+            ino = os.stat(filename).st_ino
+            fob = open(filename)
+            fob.seek(0,2)        
+            self.data[filename] = (fob, ino)
+
+    def remove_filename(self, filename):
+        if filename in self.data:
+            fob, ino = self.data[filename]
+            fob.close()
+        del self.data[filename]
+        
+            
+    def update(self):
+        ''' one cycle of dealing with what changed '''
+        for filename in sorted(self.data.keys()):
+            #print( "checking %s"%filename )
+            fob, ino = self.data[filename]
+        
+            if not os.path.exists(filename):
+                print( "file disappeared: %r"%filename )
+                fob.close()
+                while not os.path.exists(filename): # wait for it to reappear (TODO: put a timeout on this)
+                    time.sleep(1)
+                #f = open(filename)
+                #fob.seek(0,2)
+
+            stob = os.stat(filename)
+
+            if stob.st_ino != ino:
+                print( "file was replaced: %r"%filename )
+                fob.close()
+                fob = open(filename)
+                fob.seek(0,2)
+                self.data[filename] = (fob, stob.st_ino)
+
+            pos = fob.tell()
+            if pos != stob.st_size: # we assume things are only ever appended
+                if stob.st_size < pos:
+                    print( "file shrunk: %r"%filename )
+                    fob.seek( stob.st_size )
+                #sys.stdout.write( '\n==> %s <==\n'%filename )
+                #sys.stdout.write( '\n' )                
+                for line in fob.readlines():
+                    print_message( os.path.basename(filename), line )
+                    
+            #else:
+            #    print( "no change: %r"%filename )
+            #    time.sleep(0.5)
+
+            
+    def start_thread(self, interval_sec=0.5):
+        " if you're not in a position to regularly call update(), you can get this thread to do it for you "
+        import threading
+        def threadfunc(ob):
+            while True:
+                ob.update()
+                time.sleep( interval_sec )
+        thr = threading.Thread(target=threadfunc, args=(self,), name='file_follow')
+        thr.daemon = True # basically, don't be the reason Ctrl-C doesn't work
+        thr.start()
+        return thr
+        
+
+
+
+    
+class JournalctlReader(object):
+
+    def __init__(self):
+        self.pid = None
+        self.proc = None
+        # TODO: take recency and turn into   --since "2 hours ago" style thing
+        
+    def change(self, units):
+        if self.pid:
+            os.kill( self.pid, signal.SIGKILL )
+            self.proc.wait()
+
+        cmd = ['/bin/journalctl',
+            b'-o',b'json',
+            #b'-n',b'10', # show n last entries
+            b'-f'
+        ]
+        #cmd.extend( units )
+        self.proc = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE
+                                       #creationflags=subprocess.CREATE_NEW_PROCESS_GROUP # apparently necessary for os.kill()ability
+                                       )
+        
+    def update(self):
+        ''' one cycle of dealing with what changed '''
+        if self.proc != None:
+            line = self.proc.stdout.readline() # delay in thread can be tiny because this blocks
+            try:
+                d = json.loads(line)
+
+                msg  = d.get('MESSAGE')
+                
+                # I'm still figuring out which fields are present when (docs don't really say)
+                #   and in the process, these are spammy:
+                for debug_remove in ('__CURSOR', '__REALTIME_TIMESTAMP', '__MONOTONIC_TIMESTAMP', '_SOURCE_MONOTONIC_TIMESTAMP', '_BOOT_ID', '_MACHINE_ID', '_HOSTNAME'):
+                    if debug_remove in d:
+                        del d[debug_remove]
+
+                transport = d.get('_TRANSPORT',None)
+                if transport=='journal':
+                    #print( d ) # figuring out the fields
+                    sourcename = d.get('UNIT',None)        #sourcename = d.get('_SYSTEMD_UNIT',None) # this seems to be a scope. Um?
+                    if sourcename.endswith('.service'):
+                        sourcename = sourcename[:-8]
+                        
+                elif transport=='kernel':
+                    #print( d ) # figuring out the fields
+                    t = d.get('_KERNEL_SUBSYSTEM') # not always present
+                    if t==None:
+                        t = d.get('SYSLOG_IDENTIFIER') # may be 'kernel'
+                    if t=='kernel':    
+                        sourcename = 'kernel'
+                    else:
+                        sourcename = 'kernel/%s'%t
+
+                elif transport=='syslog':
+                    sourcename = 'syslog/%s'%d.get('SYSLOG_IDENTIFIER')
+
+                elif transport=='stdout': # service's stdout, try to figure uot service name
+                    #print( d ) # figuring out the fields
+                    t = d.get('_SYSTEMD_UNIT') # not always present
+                    if t==None:
+                        t = d.get('SYSLOG_IDENTIFIER') # may be 'kernel'
+                    if t!=None:
+                        if t.endswith('.service'):
+                            t = t[:-8]
+                        sourcename = '%s'%t
+                    else:
+                        sourcename = 'stdout'
+                    if type(msg) is type([]): # what the hell?
+                        msg = bytes(msg).decode('u8') # decode u8 is a guess, maybe add fallback
+                
+                elif transport=='driver':
+                    #print( d ) # figuring out the fields
+                    sourcename = 'driver'
+                    
+                elif transport=='audit':
+                    #print( d ) # figuring out the fields
+                    sourcename = 'audit'                    
+                else: # right now no others exist (accordign to docs, at least)
+                    #print( d ) # figuring out the fields
+                    sourcename = transport
+
+                print_message( '[%s]'%sourcename, msg )
+
+            except (ValueError, KeyError) as e:
+                print( e )
+                pass
+
+    def start_thread(self):
+        " if you're not in a position to regularly call update(), you can get this thread to do it for you "
+        import threading
+        def threadfunc(ob):
+            while True:
+                ob.update()
+                #time.sleep( interval_sec )
+        thr = threading.Thread(target=threadfunc, args=(self,), name='journalctl_follow')
+        thr.daemon = True # basically, don't be the reason Ctrl-C doesn't work
+        thr.start()
+        return thr
+
+
+
+########################################################################
 
 try: 
-    import setproctitle         # I like my tmux titles informative
+    import setproctitle    # I like my tmux titles informative
     setproctitle.setproctitle( os.path.basename(sys.argv[0]) )
 except ImportError:
     pass
 
 
+# CONSIDER: make members of main class
+tf = TailFollower()
+tf.start_thread( )
 
-# TODO: create class like the below for systemd
-
-def systemd_check():
-    " returns paths to systemctl and journalctl.  If either is an empty string (probably both in practice), you should probably assume it's a  non-systemd system. "
-    proc = subprocess.Popen(['/usr/bin/which', 'systemctl'], stdout=subprocess.PIPE )
-    out1, _ = proc.communicate()
-    out1 = out1.strip()
-
-    proc = subprocess.Popen(['/usr/bin/which', 'journalctl'], stdout=subprocess.PIPE )
-    out2, _ = proc.communicate()
-    out2 = out2.strip()
-    return out1, out2
-    
+jr = JournalctlReader()
+jr.start_thread( )
 
 
 
-#units = journalctl_list('inf')
-#journalctl_follow( units )
-#sys.exit()
 
-
-        
-### Helpers    
-
-blog = re.compile(r'\blog')
+# helpers for log files        
 
 def path_indicates_possible_log(filepath):
-    """ Used to clean up sources on homedirs
-        and other places where you may see mostly non-logs
+    """ Filename-based guess of whether this is likely to be a lof file.
+        Used to clean up entries from homedirs and other places where you may see a lot of non-logs
     """
     # whitelist things we want to check
-    if blog.search(filepath):
+    if re.compile(r'\blog').search(filepath):
         return True 
-    if filepath.endswith('.OU') or filepath.endswith('.ER'):  # Torque PBS
+    if filepath.endswith('.OU') or filepath.endswith('.ER'):  # Torque PBS's convention
         return True
+    if filepath.endswith('.gz') or filepath.endswith('.bz2'): 
+        return False
     # Blacklist common files that won't be logs.   Never a complete list, but speeds up what it can
     if (filepath.endswith('.rb')  or filepath.endswith('.gemspec') or filepath.endswith('.conf') or
         filepath.endswith('.cpp') or filepath.endswith('.py')      or
@@ -64,40 +258,82 @@ def path_indicates_possible_log(filepath):
 
 
 def is_recent(filename, recency_minutes=60):
-    ''' Compares a file's mtime and ctime to the system clock,
-        returns true
-           if the youngest of the two is no longer than some amount of minutes ago
-    '''
+    ''' Returns true if the youngest of (mtime,ctime) for the file is no longer than some amount of minutes ago, compared to the system clock. '''
     stob = os.stat(filename)
     latest_time = max([stob.st_mtime,stob.st_ctime])
     tdiff_sec = int(time.time()-latest_time)
-    #print filename
-    #print 'latest change: ',latest_time
-    #print 'time ago:      ',round(tdiff_sec/3600., 1),'hours'
+    #print( filename )
+    #print( 'latest change: %s'%latest_time )
+    #print( 'time ago:      %s hours '%round(tdiff_sec/3600., 1) )
     if tdiff_sec < (60.*recency_minutes):
         return True
     return False
 
 
-def islog_cheap_guess(filename=None,data=None, amt=200):
-    return helpers_path.is_nonbinary(filename, data, amt)
+def is_nonbinary(filename=None, data=None, amt=200):
+    """ Given either a filename or some data from it, returns whether this is probably text, rather than binary data.
+        amt: controls how much of data we use (or how much to read from the filename)
+
+        Written for 'is this possibly a log' test, so specialcases compressed files because of log rotation.
+    """
+    if data==None:
+        if filename==None:
+            raise ValueError("You need to give either a filename or some of the file's content data")
+        else:
+            f=open(filename,'rb')
+            data=f.read(amt)
+            f.close()
+
+    if data[:2]==b'\x1f\x8b': # gzip magic
+        #print( 'Ignoring %r, is Gzip'%filename )
+        return False
+    elif data[:3]==b'BZh':    # bzip2 magic.  There's also 'BZ0' for bzip1, but meh.
+        #print( "Ignoring %r, is bzip2"%filename )
+        return False
+    elif data[:3]==b'\xFD\x37\x7A\x58\x5A\x00':    # xz magic (TODO: test)
+        #print( "Ignoring %r, is xz"%filename )
+        return False
+
+    # list of ordinals
+    ol = list(ch  for ch in data[:amt]) # ord in py2
+    printable,nonprintable=0,0
+    for o in ol:
+        if o>=0x20 and o<0x7f:
+            printable+=1
+        else:
+            nonprintable+=1
+
+    if nonprintable==0: #only printable - this is text.
+        return True
+    else:
+        # could be made slightly cleverer, but this is probably enough.
+        printable_ratio = float(printable)/float(nonprintable+printable)
+        if printable_ratio>0.95: # assume that's enough
+            return True
+        else:
+            return False
+
+        
+def islogfile_cheapguess(filename=None,data=None, amt=200):
+    return is_nonbinary(filename, data, amt)
 
 
 
+
+
+# CONSIDER: structure by creating class like the below for systemd  (and consider extensibility for others)
 
 
 class Rescanner(object):
-    ''' The bulk of the logic.
-    '''
+    ''' The bulk of the logic checking for new files and new units. '''
     def __init__(self,
-                 scan_dirs=['/var/log'],
+                 scan_dirs=[b'/var/log'],
                  add_home=False,
                  whitelist_strings=None,
                  blacklist_strings=None,                 
                  recency_minutes=24.0*60.,
                  background_check_interval_sec=20,
                  nomatch_rescan_interval_sec=5,
-                 tail_interval_sec=0.7,
                  verbose=False,
                  ):
         """ Constructor takes most settings.
@@ -109,37 +345,39 @@ class Rescanner(object):
             This lets you easily filter for some specific named logs (or directories)
         
         """
+        self.verbose = verbose
+
+        self.add_home = add_home
         self.log_filenames = []
         self.saw_new_filenames = False
-        self.most_recent_tail_process = None
-        
         self.scan_dirs = scan_dirs
+        self.recency_minutes = recency_minutes
+        
         self.whitelist_strings = whitelist_strings
         self.blacklist_strings = blacklist_strings
-        self.add_home = add_home
-        self.recency_minutes = recency_minutes
+        
         if background_check_interval_sec!=None:
             background_check_interval_sec = max(1,background_check_interval_sec) # less than 1 second makes little sense.
         self.background_check_interval_sec = background_check_interval_sec
-        self.nomatch_rescan_interval_sec = nomatch_rescan_interval_sec        
-        self.tail_interval_sec = tail_interval_sec
-        self.verbose = verbose
-
-        self._systemctl_path, self._journalctl_path = systemd_check()
-        self.is_systemd = (self._systemctl_path!=''  and  self._journalctl_path!=None)
+        self.nomatch_rescan_interval_sec = nomatch_rescan_interval_sec
+        
+        proc = subprocess.Popen(['/usr/bin/which', 'systemctl'], stdout=subprocess.PIPE )
+        out1, _ = proc.communicate()
+        self._systemctl_path = out1.strip()
+        self.is_systemd = (self._systemctl_path != '')
         self.log_units = []
-        self.most_recent_journalctl_process = None
         
         
     def journalctl_list(self, striptype=False):
-        """ in class so we can reuse detected paths
-        """
-        proc = subprocess.Popen([self._systemctl_path, 'list-units', '--type=service', '--plain', '--no-legend', '--all'], stdout=subprocess.PIPE )
-        # --all means not just active
+        """ in class so we can reuse detected paths  """
+        proc = subprocess.Popen([self._systemctl_path, b'list-units', b'--type=service',
+                                     b'--plain', b'--no-legend',  # easier to parse
+                                     b'--all'                     # not just active
+                                     ], stdout=subprocess.PIPE )
         out, _ = proc.communicate()
         ret = []
         for line in out.splitlines():
-            line = line.rstrip()
+            line = line.rstrip().decode('utf-8')  # encode: subprocess gives bytes, we're about to filter by cmdline arguments which are unicode
             unit, load, active, sub, description = line.split(None, 4)
             typeless, _ = unit.rsplit('.',1)
             if striptype: # from returned unit names
@@ -153,7 +391,7 @@ class Rescanner(object):
                         break
                 if not whitelist_condition:
                     if self.verbose:
-                        print "%60r  Doesn't match whitelist"%unit
+                        print( "%60r  Doesn't match whitelist"%unit )
                     continue
 
             if self.blacklist_strings!=None and len(self.blacklist_strings)>0:
@@ -164,16 +402,15 @@ class Rescanner(object):
                         break
                 if blacklist_condition:
                     if self.verbose:
-                        print "%60r  Matches blacklist"%unit
+                        print( "%60r  Matches blacklist"%unit )
                     continue
-                
-            ret.append(unit)
             
+            ret.append(unit)            
         return ret
     
 
     def rescan_systemdunits(self):
-        if not self.is_systemd:
+        if not self.is_systemd: # avoid work when we never found systemctl
             return
         #TODO: integrate proper whitelist/blacklist logic
         units_now = self.journalctl_list()
@@ -183,8 +420,8 @@ class Rescanner(object):
         else:
             self.saw_new_units = True
             if self.verbose:
-                print "New units turned up: ", new_units
-                print "  unit set now", units_now
+                print( "New units turned up: %s"%new_units )
+                print( "  unit set now %s"%units_now )
         self.log_units = units_now
 
         
@@ -194,11 +431,11 @@ class Rescanner(object):
             Returns matching filenames.
         """
         if self.verbose:
-            print "Finding",
             if self.recency_minutes:
-                print "recently used",
-            print"files that look like logs...",
-
+                print( "Finding recently used files that look like logs..." )
+            else:
+                print( "Finding files that look like logs..." )
+            
         justnow_filenames = []
         
         if self.add_home: # TODO: we may want more restrictions here, e.g. looking only for filenames ending in .log
@@ -206,24 +443,27 @@ class Rescanner(object):
         
         for scan_dir in self.scan_dirs:
             if self.verbose:
-                print "\n ...in %s"%scan_dir
+                print( "\n ...in %s"%scan_dir )
             try:
                 # this indexing also does most filtering
+                sawfiles_num = 0
                 for curdir, _, files in os.walk( os.path.abspath(scan_dir) ):
                     for filename in files:
                         fullpath = os.path.join(curdir,filename)
-
+                        sawfiles_num += 1
+                    
                         # ONLY if whitelist is specified do we use it as a "only allow things that are in this"
                         # (so it's white+black, all+black, or neither)
                         if self.whitelist_strings!=None and len(self.whitelist_strings)>0:
                             whitelist_condition = False
                             for filtstr in self.whitelist_strings:
+                                #print('%r %r'%(filtstr,fullpath))
                                 if filtstr in fullpath:
                                     whitelist_condition = True
                                     break
                             if not whitelist_condition:
                                 if self.verbose:
-                                    print "%60r  Doesn't match whitelist"%fullpath
+                                    print( "%60r  Doesn't match whitelist"%fullpath )
                                 continue
                         
                         if self.blacklist_strings!=None and len(self.blacklist_strings)>0:
@@ -234,36 +474,34 @@ class Rescanner(object):
                                     break
                             if blacklist_condition:
                                 if self.verbose:
-                                    print "%60r  Matches blacklist"%fullpath
-                                continue                            
+                                    print( "%60r  Matches blacklist"%fullpath)
+                                continue
                         
                         # above the content guess. when this applies, we avoid file operations
                         if self.recency_minutes:
                             if not is_recent(fullpath, recency_minutes=recency_minutes):
                                 if self.verbose:
-                                    print "%60r  Not recent"%fullpath
+                                    print( "%60r  Not recent"%fullpath )
                                 continue
 
-                        is_log = islog_cheap_guess(filename=fullpath)
+                        is_log = islogfile_cheapguess(filename=fullpath)
                         if is_log:
                             if self.verbose:
-                                print "%60r  Looks good"%fullpath
+                                print( "%60r  Looks good"%fullpath )
                             justnow_filenames.append(fullpath)
                         else:
                             if self.verbose:
-                                print "%60r  Does not look like log"%fullpath
+                                print( "%60r  Does not look like log  (or is compresed)"%fullpath )
+                if self.verbose:
+                    print("scanned %d files for logness"%sawfiles_num)
                                 
-                                
-            except Exception, exception:
+            except Exception as exception:
                 #if self.verbose:
                 sys.stderr.write( "Error (%s), ignoring..."%str(exception))
-                #raise
+                raise
 
         if self.verbose:           
-            print "\nDone, found %d"%len(justnow_filenames),
-            if recency_minutes:
-                print "recently used",
-            print "logs"
+            print( "\nDone, found %d logs"%len(justnow_filenames) )
 
         # Check whether we saw new filenames
         #   we only care about seeing files we had not seen before,
@@ -272,8 +510,7 @@ class Rescanner(object):
         if len(new_files)==0:
             self.saw_new_filenames = False
         else:
-            self.saw_new_filenames = True
-            
+            self.saw_new_filenames = True                        
         self.log_filenames = justnow_filenames
 
 
@@ -281,83 +518,39 @@ class Rescanner(object):
         """ Scans, runs a tail subprocess on the result.
         """
         while True:
+            # updates some of our state
             self.rescan_systemdunits()                    
-            self.rescan_filelogs()     # updates some of our state
+            self.rescan_filelogs()     
 
             if len(self.log_filenames)==0 and len(self.log_units)==0: # no matching logs at all.
                 # Usually means no matches when starting up because of overly strict filters
                 # can also mean all matching logs were removed.
                 # In either case, we keep rescanning
-                print "No matching logs, waiting until some do  (%d second interval)"%self.nomatch_rescan_interval_sec
+                print( "No matching logs, waiting until some do" )
                 # note: will skip both blocks below and do only the interval sleep
 
-            #if self.verbose:
-            #    print "\nMatching log files: %r"%self.log_filenames
-            #    #print "\nMatching systemd units: %r"%self.log_filenames
+            if self.verbose:
+                print( "\nMatching log files: %r"%self.log_filenames )
+                print( "\nMatching systemd units: %r"%self.log_units )
 
-            # ...there are >0 matching logs
-            
             if not (self.saw_new_filenames or self.saw_new_units): # ...but nothing changed. Do nothing.
                 if self.verbose:
-                    print "\nNo changes in matching logs"
+                    print( "\nNo changes in matching logs" )
                 # note: will skip both blocks below and do only the interval sleep
+            else:
+                
+                if self.saw_new_units:
+                    sys.stdout.write( 'Changing journalctl to listen to %d units\n'%len(self.log_units) )
+                    sys.stdout.flush()
+                    jr.change( self.log_units )
 
-            # there are changes
+                if self.saw_new_filenames:
+                    for filename in self.log_filenames: # thigns we already listen to will be ignored
+                        tf.add_filename( filename )
             
-            ### Systemd units ##########################
-            if self.saw_new_units:
-                if self.most_recent_journalctl_process!=None: 
-                    sys.stdout.write( 'restarting journalctl on %d logs\n'%len(self.log_filenames) )
-                    sys.stdout.flush()
-                    os.kill( self.most_recent_journalctl_process.pid, signal.SIGKILL ) 
-                else:
-                    sys.stdout.write( 'starting journalctl on %d logs\n'%len(self.log_filenames) )
-                    sys.stdout.flush()
-
-                cmd = [self._journalctl_path, '-f']
-                for unit in self.log_units:
-                    cmd.extend(['-u', unit])
-                print ' '.join(cmd)
-               
-                    
-                proc = subprocess.Popen(cmd, shell=False,
-                                       #creationflags=subprocess.CREATE_NEW_PROCESS_GROUP # apparently necessary for os.kill()ability
-                                       )
-                self.most_recent_journalctl_process = proc
-
-
-                
-            ### Log files ##############################
-            if self.saw_new_filenames:   # we noticed some new files, so (re-)launch tail
-                if self.most_recent_tail_process!=None: # "New log files appeared, re-opening."
-                    sys.stdout.write( 'restarting tail on %d logs\n'%len(self.log_filenames) )
-                    sys.stdout.flush()
-                    os.kill( self.most_recent_tail_process.pid, signal.SIGKILL ) # "Killing previous follower (%d)"%self.most_recent_tail_process.pid
-                else:
-                    sys.stdout.write( 'starting to tail %d logs\n'%len(self.log_filenames) )
-                    sys.stdout.flush()
-                
-                # sort by mtime, so that the last in the list is most likely to be visible when you start listening
-                # only makes sense when using tail -n with a value larger than 0
-                sorted_list = list( (e,os.stat(e).st_mtime)     for e in self.log_filenames)
-                sorted_list.sort( lambda a,b: cmp(a[1],b[1]) )
-                sorted_list = list(e[0] for e in sorted_list)
-                
-                #TODO: be compatible with simpler tail implementations (without -F)
-                cmd = ['tail','-F']  # follow name, not inode
-                cmd.extend(['--retry'])
-                cmd.extend(['-s','%.2f'%self.tail_interval_sec])
-                cmd.extend(['-n','10']) # only last line
-                cmd.extend( sorted_list )
-                
-                proc = subprocess.Popen(cmd, shell=False,
-                                       #creationflags=subprocess.CREATE_NEW_PROCESS_GROUP # apparently necessary for os.kill()ability
-                                       )
-                self.most_recent_tail_process = proc
-
-                
             ### 
-            #print "CHANGE; SLEEP %.1f"%self.background_check_interval_sec
+            if self.verbose:
+                print( "Sleeping %.1f"%self.background_check_interval_sec )
             time.sleep( self.background_check_interval_sec )
 
 
@@ -377,8 +570,9 @@ if __name__=='__main__':
             background_check_interval_sec = 5
             
         else: # general behaviour: look for system logs only
-            scan_dirs = ['/var/log/',
-                         '/var/lib/log/',               #while we're at it, other potential directories
+            scan_dirs = ['/var/log/',                    # seems to cover linux, bsd, osx
+                         '/var/lib/log/',                # while we're at it, other potential directories
+                         #b'/var/lib/docker/containers/', # JSON, though
                          # TODO: look on other *nices for entries to add here
                         ]
 
@@ -393,7 +587,6 @@ if __name__=='__main__':
             # TODO: proper argument parsing
             # TODO: allow blacklist as well (e.g. 'everything except apache')
 
-
         s = Rescanner( scan_dirs=scan_dirs,
                        add_home=add_home,
                        recency_minutes=recency_minutes,
@@ -407,11 +600,6 @@ if __name__=='__main__':
 
             
     except KeyboardInterrupt:
-        #print "\nBreaking"
-        if s.most_recent_tail_process != None:
-            #print "  killing tail"
-            os.kill( s.most_recent_tail_process.pid, signal.SIGKILL ) 
-        if s.most_recent_journalctl_process != None:
-            #print "  killing journalctl"
-            os.kill( s.most_recent_journalctl_process.pid, signal.SIGKILL ) 
+        pass
+        # shutdown threads?
 
