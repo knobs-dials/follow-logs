@@ -1,10 +1,7 @@
-"just show me relevant logs" in fewer keystrokes:
-
-Reads from both files (avoids compressed logs and binary files) and from journalctl.
-
-Lets you filter files and units to include/exclude, by substrings
-
-Picks up new matching logs as they appear.
+"Just show me all relevant logs" in fewer keystrokes:
+- Reads from both files under /log/var (avoids compressed logs and binary files) and from journalctl.
+- Lets you filter files and units to include/exclude, by substrings
+- Picks up new matching logs as they appear.
 
 
 ## EXAMPLE
@@ -24,12 +21,10 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
 ```
 
 ## TODO:
-- test that the systemd logic actually picks up new units
-- I've noticed that tail -F can lose track of files (even though it implies --retry)
-  - write my own tail code in python
-- ...and ingest journalctl ourselves, so we can unify formatting
 - add proper argument parsing. Syntax will change.
-- consider further paths to look for logs. Suggestions?
+- test that the systemd logic actually picks up new units
+- write my own tail code in python, because the call to an external `tail -F` lose track of files (even though it implies --retry)
+- ...and ingest journalctl ourselves, to unify formatting
 - 'start with n recent lines' in both log sources
 - detangle code to ease adding further log sources
 
