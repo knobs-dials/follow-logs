@@ -26,5 +26,5 @@ Apr 21 12:47:37 myhost influxd[23109]: [httpd] 192.168.1.2 - - [21/Apr/2020:12:4
 - write my own tail code in python, because the call to an external `tail -F` lose track of files (even though it implies --retry)
 - ...and ingest journalctl ourselves, to unify formatting
 - 'start with n recent lines' in both log sources
+- figure out how to stop journalctl reporting from non-units
 - detangle code to ease adding further log sources
-
