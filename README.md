@@ -24,24 +24,26 @@ Changing tail to listen to 74 files
 
 ## Arguments
 ```
-usage: follow-logs [-h] [--recency RECENCY] [--check-interval CHECK_INTERVAL]
-                   [--home] [--scandirs SCANDIRS] [-o ONLYS] [-n NOTS] [-v]
+usage: follow-logs [-h] [-o ONLYS] [-n NOTS] [--recency RECENCY]
+                   [--check-interval CHECK_INTERVAL] [--scandirs SCANDIRS]
+                   [--home] [-v]
 
 optional arguments:
   -h, --help            show this help message and exit
-  --recency RECENCY     ignore logs with mtime/ctime older than this
-  --check-interval CHECK_INTERVAL
-                        check for log source changes every this often
-  --home                look for log-ish text files in homedir, defaults off
-                        since it's slow and may turn up crud.
-  --scandirs SCANDIRS   paths to look for logs under, comma-separated,
-                        defaults to /var/log/,/var/lib/log/
   -o ONLYS, --onlys ONLYS
                         if specified, matches only names with one of these
                         substrings (comma separated)
   -n NOTS, --nots NOTS  if specified, everything except names with one of
                         these substrings (comma separated)
+  --recency RECENCY     ignore logs with mtime/ctime older than this
+  --check-interval CHECK_INTERVAL
+                        check for log source changes every this often
+  --scandirs SCANDIRS   paths to look for logs under, comma-separated,
+                        defaults to /var/log/,/var/lib/log/
+  --home                look for log-ish text files in homedir, defaults off
+                        since it's slow and may turn up crud.
   -v, --verbose         debug verbosity
+
 ```
 
 ## TODO:
