@@ -35,15 +35,16 @@ optional arguments:
                         substrings (comma separated)
   -n NOTS, --nots NOTS  if specified, everything except names with one of
                         these substrings (comma separated)
-  --recency RECENCY     ignore logs with mtime/ctime older than this
+  --recency RECENCY     ignore logs with mtime/ctime older than this, defaults
+                        to 1w
   --check-interval CHECK_INTERVAL
-                        check for log source changes every this often
+                        check for log source changes every this often,
+                        defaults to 30s
   --scandirs SCANDIRS   paths to look for logs under, comma-separated,
                         defaults to /var/log/,/var/lib/log/
   --home                look for log-ish text files in homedir, defaults off
                         since it's slow and may turn up crud.
   -v, --verbose         debug verbosity
-
 ```
 
 ## TODO:
