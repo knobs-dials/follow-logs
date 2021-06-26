@@ -26,10 +26,9 @@ Changing tail to listen to 74 files
 ## TODO:
 - add argument parsing. Syntax will change
   - including "ignore non-unit systemd messages"
+  - 'start with n recent lines' in both log sources
 
-- 'start with n recent lines' in both log sources
-
-- test that the systemd logic actually picks up new units
+- check that the systemd logic actually picks up new units
 
 - detangle code to ease adding further log sources
 
