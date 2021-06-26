@@ -61,41 +61,54 @@ class TailFollower(object):
             
     def update(self):
         ''' one cycle of dealing with what changed '''
+        # should deal with
+        # - filename disappearing, and later reappearing (os.path.exists False somewhere. inode is not relevant)
+        # - file being replaced   (different inode; close and open)
+        # ...largely because logrotate may cause both, depending on config and how fast it is
+        
         for filename in sorted(self.data.keys()):
             #print( "checking %s"%filename )
             fob, ino = self.data[filename]
-        
-            if not os.path.exists(filename):
-                print( "file disappeared: %r"%filename )
-                fob.close()
-                while not os.path.exists(filename): # wait for it to reappear (TODO: put a timeout on this)
-                    time.sleep(1)
-                #f = open(filename)
-                #fob.seek(0,2)
 
-            stob = os.stat(filename)
+            if fob==None: # disappeared before, see if it reapeared
+                if os.path.exists(filename):
+                    print( "file reappeared, opening: %r"%filename )
+                    fob = open(filename)
+                    fob.seek(0,2)
+                    ino = os.stat(filename).st_ino
+                    self.data[filename] = (fob, ino)
+                # CONSIDER: a (longish, configurable)  timeout to retry opens in
+                
+            else: # not marked disappeared
 
-            if stob.st_ino != ino:
-                print( "file was replaced: %r"%filename )
-                fob.close()
-                fob = open(filename)
-                fob.seek(0,2)
-                self.data[filename] = (fob, stob.st_ino)
+                try:
+                    if not os.path.exists(filename):
+                        print( "file disappeared, closing: %r"%filename )
+                        fob.close()
+                        self.data[filename] = (None, None)
 
-            pos = fob.tell()
-            if pos != stob.st_size: # we assume things are only ever appended
-                if stob.st_size < pos:
-                    print( "file shrunk: %r"%filename )
-                    fob.seek( stob.st_size )
-                #sys.stdout.write( '\n==> %s <==\n'%filename )
-                #sys.stdout.write( '\n' )                
-                for line in fob.readlines():
-                    print_message( os.path.basename(filename), line )
+                    else: # filename still exists, check for being replaecd (e.g. by logrotate)
+                        stob = os.stat(filename)
+                        if stob.st_ino != ino:
+                            print( "file was replaced, reopening: %r"%filename )
+                            fob.close()
+                            fob = open(filename)
+                            fob.seek(0,2)
+                            self.data[filename] = (fob, stob.st_ino)
+
+
+                    ### see if there are new lines to print
+                    pos = fob.tell()
+                    if pos != stob.st_size: # we assume things are only ever appended
+                        if stob.st_size < pos: # ...mostly.
+                            print( "file shrunk, seeking to end: %r"%filename )
+                            fob.seek( 0,2 )
+                        for line in fob.readlines():
+                            print_message( os.path.basename(filename), line )
+                            
+                except (ValueError,) as e: # if the file disappears after the exists check, things like the tell and read will fail instead. TODO: figure out all possible exceptions
+                    pass
                     
-            #else:
-            #    print( "no change: %r"%filename )
-            #    time.sleep(0.5)
-
             
     def start_thread(self, interval_sec=0.5):
         " if you're not in a position to regularly call update(), you can get this thread to do it for you "
@@ -298,11 +311,12 @@ def is_nonbinary(filename=None, data=None, amt=200):
     ol = list(ch  for ch in data[:amt]) # ord in py2
     printable,nonprintable=0,0
     for o in ol:
-        if o>=0x20 and o<0x7f:
-            printable+=1
+        if (o>=0x20 and o<0x7f) or o in (0x0d, 0x0a):
+            printable    += 1
         else:
-            nonprintable+=1
+            nonprintable += 1
 
+    #print(filename, printable, nonprintable )
     if nonprintable==0: #only printable - this is text.
         return True
     else:
