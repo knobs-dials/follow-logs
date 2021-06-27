@@ -48,9 +48,12 @@ optional arguments:
 ```
 
 ## TODO:
-- 'start with n recent lines when opening logs' in both log sources
-
 - check that the systemd logic actually picks up new units
+
+- think about optimizations. Scanning a /var/log with thousands of files is slow. 
+  - In particular, consider inotify or similar
+
+- 'start with n recent lines when opening logs' in both log sources
 
 - detangle code to ease adding further log sources
 
