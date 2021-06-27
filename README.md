@@ -57,7 +57,7 @@ optional arguments:
 
 - 'start with n recent lines when opening logs' in both log sources
 
-- detangle code to ease adding further log sources
+- detangle code to ease adding further log sources (e.g. docker logs)
 
 
 ## Notes:
