@@ -5,6 +5,8 @@
     - avoiding old logs, and compressed logs and other binary files
   - **systemd logs**
 - Lets you **filter** filenames and unit names, including/excluding by substrings (in absolute pathname, and unit name)
+  - e.g. `-n access` goes a long way to show everything except apache access logs
+  - e.g. `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
 - Picks up new matching logs as they appear
 - unified output format, coloring by source
 
