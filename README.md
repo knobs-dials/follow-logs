@@ -8,7 +8,8 @@
   - e.g. `-n access` goes a long way to show everything except apache access logs
   - e.g. `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
 - Picks up new matching logs as they appear
-- unified output format, coloring by source
+- unified output format
+  - coloring by source
 
 ## EXAMPLE
 ```  
