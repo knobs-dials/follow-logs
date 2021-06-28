@@ -66,6 +66,6 @@ optional arguments:
 
 
 ## Notes:
-- will work withuot helpers_shellcolor, but coloring the source names is nice for visual parsing
+- will work without helpers_shellcolor, but coloring the source names is nice for visual parsing
 
 - has its own imitation of `tail -F`, because that didn't seem to deal with logrotate behaviour all the time
