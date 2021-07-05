@@ -68,4 +68,4 @@ optional arguments:
 ## Notes:
 - will work without helpers_shellcolor, but coloring the source names is nice for visual parsing
 
-- has its own imitation of `tail -F`, because that didn't seem to deal with logrotate behaviour all the time
+- has its own imitation of `tail -F`, because the tail command didn't seem to deal with logrotate yoinking the file for more than a second or two
