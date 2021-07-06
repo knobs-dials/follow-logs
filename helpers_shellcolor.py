@@ -599,6 +599,8 @@ def hash_color(s, rgb=False):
     m = hashlib.sha256()
     m.update(s.encode('u8'))
     dig = m.digest()
+    if type(dig[0]) is not int: # quick and dirty way of dealing with py2/3 difference
+        dig = list( ord(ch) for ch in dig)
     
     if rgb:
         r = max(20, dig[0])
@@ -609,7 +611,7 @@ def hash_color(s, rgb=False):
         choosefrom = [ BRIGHTBLACK,RED, BRIGHTRED, GREEN, BRIGHTGREEN,
                        YELLOW, BRIGHTYELLOW, BLUE, BRIGHTBLUE, MAGENTA,
                        BRIGHTMAGENTA, CYAN, BRIGHTCYAN, GREY, WHITE     ]
-        choice = choosefrom[ sum(ord(ch) for ch in dig)%len(choosefrom) ]
+        choice = choosefrom[ sum(ch for ch in dig)%len(choosefrom) ]
         return '%s%s%s'%(choice,s,DEFAULT)
 
 
@@ -620,11 +622,11 @@ def test():
         print( color_degree('foo', i,0,100) )
         
     teststrs = 'dfgadfg','23434','foo','var','bar'
-    print( "hashcolor, standard color set" )
+    print( "hash_color, standard color set" )
     for s in teststrs:
         print( hash_color(s) )
         
-    print( "hashcolor, true color" )
+    print( "hash_color, true color" )
     for s in teststrs:
         print( hash_color(s,rgb=True) )
         
