@@ -607,6 +607,9 @@ if __name__=='__main__':
         parser.add_argument("--check-interval", action="store",       default="30s", help="check for log source changes every this often, defaults to 30s")
         parser.add_argument("--scandirs",       action="store",       default="/var/log/,/var/lib/log/",  help="paths to look for logs under, comma-separated, defaults to /var/log/,/var/lib/log/ ")
         parser.add_argument("--home",           action="store_true",  default=False, help="look for log-ish text files in homedir, defaults off since it's slow and may turn up crud.")
+
+        parser.add_argument("-C", "--no-color", action="store_true",  default=False, help="no coloring, even when context seems to support it.")
+        
         parser.add_argument('-v', "--verbose",  action="store_true",  default=False,  help="debug verbosity")
         args = parser.parse_args()
         
@@ -621,6 +624,9 @@ if __name__=='__main__':
             onlys = args.onlys.split(',')
         if args.nots:
             nots  = args.nots.split(',')
+
+        if args.no_color:
+            sc = None
             
         if 0:
             print( check_interval )
@@ -628,7 +634,7 @@ if __name__=='__main__':
             print( scan_dirs )
             print( onlys )
             print( nots )
-        
+            
         s = Rescanner( scan_dirs          = scan_dirs,
                        add_home           = args.home,
                        recency_minutes    = recency_minutes,

@@ -49,6 +49,7 @@ optional arguments:
                         defaults to /var/log/,/var/lib/log/
   --home                look for log-ish text files in homedir, defaults off
                         since it's slow and may turn up crud.
+  -C, --no-color        no coloring, even when context seems to support it.
   -v, --verbose         debug verbosity
 ```
 
