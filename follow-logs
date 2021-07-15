@@ -5,6 +5,7 @@
 import os
 import sys
 import time
+import datetime
 import re
 import signal
 import subprocess
@@ -37,7 +38,8 @@ def print_message(source, message):
 
     
 class TailFollower(object):
-    """ Imitation of tail -F, because actual tail -F seems to give up when we don't want it to.  Could stand some further testing.
+    """ Imitation of tail -F, because actual tail -F seems to give up in some cases, which we can't control.  
+        Could stand some further testing.
     """
     def __init__(self):
         self.data = {} # filename -> ( fob, inode )
@@ -94,7 +96,6 @@ class TailFollower(object):
                             fob.seek(0,2)
                             self.data[filename] = (fob, stob.st_ino)
 
-
                     ### see if there are new lines to print
                     pos = fob.tell()
                     if pos != stob.st_size: # we assume things are only ever appended
@@ -124,7 +125,9 @@ class TailFollower(object):
 
     
 class JournalctlReader(object):
-    def __init__(self):
+    " runs journalctl on given units "
+    def __init__(self, add_time=False):
+        self.add_time = add_time
         self.pid = None
         self.proc = None
         # TODO: take recency and turn into   --since "2 hours ago" style thing
@@ -205,7 +208,12 @@ class JournalctlReader(object):
                     #print( d ) # figuring out the fields
                     sourcename = transport
 
-                    
+                if self.add_time:
+                    tve = d.get('_SOURCE_REALTIME_TIMESTAMP')
+                    if tve!=None:
+                        msg = datetime.datetime.fromtimestamp( float(tve)/1000000 ).strftime('%b %-d %H:%M:%S') + '  ' + msg
+                    #else:
+                    #    print( d )
                 print_message( '[%s]'%sourcename, msg )
 
             except (ValueError, KeyError) as e:
@@ -227,22 +235,6 @@ class JournalctlReader(object):
 
 
 ########################################################################
-
-try: 
-    import setproctitle    # I like my tmux titles informative
-    setproctitle.setproctitle( os.path.basename(sys.argv[0]) )
-except ImportError:
-    pass
-
-
-# CONSIDER: make members of main class, the scopey references are a little ugly
-tf = TailFollower()
-tf.start_thread( )
-
-jr = JournalctlReader()
-jr.start_thread( )
-
-
 
 
 # helpers for log files        
@@ -331,6 +323,9 @@ def islogfile_cheapguess(filename=None,data=None, amt=200):
 
 
 
+
+
+
 class Rescanner(object):
     ''' The bulk of the logic checking for new files and new units. '''
     def __init__(self,
@@ -342,15 +337,22 @@ class Rescanner(object):
                  check_interval_sec=20,
                  nomatch_rescan_interval_sec=5,
                  verbose=False,
+                 add_time=True,
                  ):
         """ Constructor takes most settings.
             add_home         - look in current user's home directory
             recency_minutes  - log needs to be this young to be listed.   0/False/None means don't filter. 
 
-            If onlys isn't None or [], it is used as a whitelist of substrings
-            that have to appear somewhere in the path.
+            If onlys isn't None or [], it is used as a whitelist of substrings that have to appear somewhere in the path.
             This lets you easily filter for some specific named logs (or directories)
         """
+
+        # members of main class, so that the scopey references are a little ugly
+        self.tf = TailFollower()
+        self.tf.start_thread( )
+        self.jr = JournalctlReader( add_time=True )
+        self.jr.start_thread( )
+         
         self.verbose = verbose
 
         self.add_home = add_home
@@ -549,13 +551,13 @@ class Rescanner(object):
                     #if self.verbose:
                     sys.stdout.write( 'Changing journalctl to listen to %d units\n'%len(self.log_units) )
                     sys.stdout.flush()
-                    jr.change( self.log_units )
+                    self.jr.change( self.log_units )
 
                 if self.saw_new_filenames:
                     sys.stdout.write( 'Changing tail to listen to %d files\n'%len(self.log_filenames) )
                     sys.stdout.flush()
                     for filename in self.log_filenames: # thigns we already listen to will be ignored
-                        tf.add_filename( filename )
+                        self.tf.add_filename( filename )
             
             ### 
             if self.verbose:
@@ -567,6 +569,12 @@ class Rescanner(object):
                     
 
 if __name__=='__main__':
+    try: 
+        import setproctitle    # I like my tmux titles informative
+        setproctitle.setproctitle( os.path.basename(sys.argv[0]) )
+    except ImportError:
+        pass
+
     def parse_hms(v):
         ''' string interval spec to seconds, e.g.  
              '1h30m' -> 5400, 
@@ -601,16 +609,25 @@ if __name__=='__main__':
 
     try:
         parser = argparse.ArgumentParser()
-        parser.add_argument('-o',"--onlys",     action="store",       default=None,  help="if specified, matches only names with one of these substrings (comma separated)")
-        parser.add_argument('-n',"--nots",      action="store",       default=None,  help="if specified, everything except names with one of these substrings (comma separated)")
-        parser.add_argument("--recency",        action="store",       default="1w",  help="ignore logs with mtime/ctime older than this, defaults to 1w")
-        parser.add_argument("--check-interval", action="store",       default="30s", help="check for log source changes every this often, defaults to 30s")
-        parser.add_argument("--scandirs",       action="store",       default="/var/log/,/var/lib/log/",  help="paths to look for logs under, comma-separated, defaults to /var/log/,/var/lib/log/ ")
-        parser.add_argument("--home",           action="store_true",  default=False, help="look for log-ish text files in homedir, defaults off since it's slow and may turn up crud.")
-
-        parser.add_argument("-C", "--no-color", action="store_true",  default=False, help="no coloring, even when context seems to support it.")
-        
-        parser.add_argument('-v', "--verbose",  action="store_true",  default=False,  help="debug verbosity")
+        parser.add_argument('-o',"--onlys",               action="store",       default=None,
+                                help="if specified, matches only names with one of these substrings (comma separated)")
+        parser.add_argument('-n',"--nots",                action="store",       default=None,
+                                help="if specified, everything except names with one of these substrings (comma separated)")
+        parser.add_argument("-T", "--no-journalctl-time", action="store_false",  default=True,
+                                help="by default we add the time field to journalctil lines. Specify this to turn that off.")
+                                # CONSIDER: parameter to format that time
+        parser.add_argument("--recency",                  action="store",       default="1w",
+                                help="ignore logs with mtime/ctime older than this, defaults to 1w")
+        parser.add_argument("--check-interval",           action="store",       default="30s",
+                                help="check for log source changes every this often, defaults to 30s")
+        parser.add_argument("--scandirs",                 action="store",       default="/var/log/,/var/lib/log/",
+                                help="paths to look for logs under, comma-separated, defaults to /var/log/,/var/lib/log/ ")
+        parser.add_argument("--home",                     action="store_true",  default=False,
+                                help="look for log-ish text files in homedir, defaults off since it's slow and may turn up crud.")
+        parser.add_argument("-C", "--no-color",           action="store_true",  default=False,
+                                help="no coloring, even when context seems to support it.")        
+        parser.add_argument('-v', "--verbose",            action="store_true",  default=False,
+                                help="debug verbosity")
         args = parser.parse_args()
         
         check_interval  = parse_hms( args.check_interval )
