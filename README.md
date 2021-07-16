@@ -9,7 +9,7 @@
   - e.g. `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
 - Picks up new matching logs as they appear
 - unified output format
-  - coloring by source
+  - coloring by source, as it's easier to parse visually
 
 ## EXAMPLE
 ```  
@@ -67,6 +67,7 @@ optional arguments:
 
 - detangle code to ease adding further log sources (e.g. docker logs)
 
+- see about using more colors
 
 ## Notes:
 - will work without helpers_shellcolor, but coloring the source names is nice for visual parsing
