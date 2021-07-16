@@ -54,6 +54,8 @@ optional arguments:
 ```
 
 ## TODO:
+- it's almost certain there are some edge cases in the tail imitation that I haven't thought of yet. I'll get to it.
+
 - systemd related:
   - check that the systemd logic actually picks up new units
   - think of what non-units to show (e.g. .scope for login sessions are nice to see)
