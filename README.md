@@ -29,9 +29,9 @@ Changing tail to listen to 74 files
 
 ## Arguments
 ```
-usage: follow-logs [-h] [-o ONLYS] [-n NOTS] [--recency RECENCY]
+usage: follow-logs [-h] [-o ONLYS] [-n NOTS] [-T] [--recency RECENCY]
                    [--check-interval CHECK_INTERVAL] [--scandirs SCANDIRS]
-                   [--home] [-v]
+                   [--home] [-C] [-t] [-v]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -40,6 +40,9 @@ optional arguments:
                         substrings (comma separated)
   -n NOTS, --nots NOTS  if specified, everything except names with one of
                         these substrings (comma separated)
+  -T, --no-journalctl-time
+                        by default we add the time field to journalctil lines.
+                        Specify this to turn that off.
   --recency RECENCY     ignore logs with mtime/ctime older than this, defaults
                         to 1w
   --check-interval CHECK_INTERVAL
@@ -50,6 +53,8 @@ optional arguments:
   --home                look for log-ish text files in homedir, defaults off
                         since it's slow and may turn up crud.
   -C, --no-color        no coloring, even when context seems to support it.
+  -t, --true-color      use true-color escapes, for more colors when you know
+                        it's supported
   -v, --verbose         debug verbosity
 ```
 
