@@ -18,31 +18,16 @@ except ImportError:
     sc = None
 
     
-def print_message(source, message):
-    " Unified pritner "
-    # CONSIDER: detecting and doing 256 colors when we can
-    # CONSIDER: I didn't I have a function for this?
-    alisource = '%25s'%source
-    if sc==None: # don't break if that color helper isn't there
-        sys.stdout.write( alisource  )
-    else:
-        color_funcs = [ sc.blue, sc.red, sc.green, sc.cyan, sc.magenta, sc.yellow, sc.brightblue, sc.brightred, sc.brightcyan, sc.brightmagenta, sc.brightyellow, sc.brightgreen ]
-        strhash = sum( ord(ch)  for ch in source )
-        sys.stdout.write( color_funcs[strhash%len(color_funcs)]( alisource ) )
-    sys.stdout.write( ': ')
-    sys.stdout.write( message.rstrip() )
-    sys.stdout.write( '\n')
-    sys.stdout.flush()
-    
-
 
     
 class TailFollower(object):
     """ Imitation of tail -F, because actual tail -F seems to give up in some cases, which we can't control.  
         Could stand some further testing.
     """
-    def __init__(self):
+    def __init__(self, print_callback):
+        ''' print_callback should take two strings, source and message '''
         self.data = {} # filename -> ( fob, inode )
+        self.print_callback = print_callback
         
     def add_filename(self, filename):
         if not os.path.exists(filename):
@@ -60,7 +45,7 @@ class TailFollower(object):
         del self.data[filename]
         
     def update(self):
-        ''' one cycle of dealing with what changed '''
+        ''' one cycle of dealing with what changed - checks that files are still there, and the same files '''
         # should deal with
         # - filename disappearing, and later reappearing (os.path.exists False somewhere. inode is not relevant)
         # - file being replaced   (different inode; close and open)
@@ -103,10 +88,17 @@ class TailFollower(object):
                             print( "file shrunk, seeking to end: %r"%filename )
                             fob.seek( 0,2 )
                         for line in fob.readlines():
-                            print_message( os.path.basename(filename), line )
-                            
-                except (ValueError,) as e: # if the file disappears after the exists check, things like the tell and read will fail instead. TODO: figure out all possible exceptions
-                    pass
+                            self.print_callback( os.path.basename(filename), line )
+
+                # TODO: figure out all possible exceptions             
+                # perhaps the most important if the file disappears _after_ the exists() check, things like the tell() and read() will fail instead, 
+                except ValueError as ve:  # ...which seems to be reported as a ValueError
+                    pass # we can ignore that because we'll get to it later
+                
+                except OSError as oe: # I got "telling position disabled by next() call", which seems to be our own thread's reading temporarily disabling tell (?)
+                    pass # if so we can ignore that, we can print these lines next iteration
+                # TODO: tests for these cases more specifically, right now this is probably too catch-all
+                
                     
     def start_thread(self, interval_sec=0.5):
         " if you're not in a position to regularly call update(), you can get this thread to do it for you "
@@ -126,10 +118,12 @@ class TailFollower(object):
     
 class JournalctlReader(object):
     " runs journalctl on given units "
-    def __init__(self, add_time=False):
+    def __init__(self, print_callback, add_time=False):
+        ''' print_callback should take two strings, source and message '''
         self.add_time = add_time
         self.pid = None
         self.proc = None
+        self.print_callback = print_callback
         # TODO: take recency and turn into   --since "2 hours ago" style thing
         
     def change(self, units):
@@ -153,15 +147,20 @@ class JournalctlReader(object):
             line = self.proc.stdout.readline() # delay in thread can be tiny because this blocks
             try:
                 d = json.loads(line)
-
-                msg  = d.get('MESSAGE')
-                
-                # I'm still figuring out which fields are present when (docs don't really say)
-                
-                #   and in the process, these are spammy:
-                for debug_remove in ('__CURSOR', '__REALTIME_TIMESTAMP', '__MONOTONIC_TIMESTAMP', '_SOURCE_MONOTONIC_TIMESTAMP', '_BOOT_ID', '_MACHINE_ID', '_HOSTNAME'):
+                # I'm still figuring out which fields are present when. Documentation is barely helpful here...
+                # and in the process, these are spammy:
+                for debug_remove in ('__CURSOR', '_BOOT_ID', '_MACHINE_ID', '_HOSTNAME',
+                                    # '__REALTIME_TIMESTAMP', '__MONOTONIC_TIMESTAMP', '_SOURCE_MONOTONIC_TIMESTAMP', 
+                                    ):
                     if debug_remove in d:
                         del d[debug_remove]
+
+                msg  = d.get('MESSAGE')
+
+                if msg==None: # ...why, dammit. 
+                    print( "MESSAGE missing in %r"%d ) # leaving this in to see what cases this is
+                    return # I think we can ignore this, though?
+                
 
                 transport = d.get('_TRANSPORT',None)
                 if transport=='journal':
@@ -209,14 +208,14 @@ class JournalctlReader(object):
                     sourcename = transport
 
                 if self.add_time:
-                    tve = d.get('_SOURCE_REALTIME_TIMESTAMP')
+                    tve = d.get('_SOURCE_REALTIME_TIMESTAMP') # TODO: figure out which of the timestamps is most useful
                     if tve!=None:
                         msg = datetime.datetime.fromtimestamp( float(tve)/1000000 ).strftime('%b %-d %H:%M:%S') + '  ' + msg
                     #else:
                     #    print( d )
-                print_message( '[%s]'%sourcename, msg )
+                self.print_callback( '[%s]'%sourcename, msg )
 
-            except (ValueError, KeyError) as e:
+            except (ValueError, KeyError) as e:  # AttributeError
                 print( e )
                 pass
 
@@ -234,30 +233,38 @@ class JournalctlReader(object):
 
 
 
-########################################################################
+#### helpers ###########################################################
 
 
-# helpers for log files        
-
-def path_indicates_possible_log(filepath):
+def path_indicates_possible_log(fullpath):
     """ Filename-based guess of whether this is likely to be a lof file.
         Used to clean up entries from homedirs and other places where you may see a lot of non-logs
+        Returns True for things we want to check, 
+                False for things we know won't be logs (which will never be a complete list, but helps speed a little).
+        In practice this does very little.         
     """
-    # whitelist things we want to check
-    if re.compile(r'\blog').search(filepath):
-        return True 
-    if filepath.endswith('.OU') or filepath.endswith('.ER'):  # Torque PBS's convention
-        return True
-    if filepath.endswith('.gz') or filepath.endswith('.bz2'): 
+    basename = os.path.basename(fullpath)
+    if fullpath.endswith('.gz') or fullpath.endswith('.bz2'): 
+        #print( "filename NO %r"%fullpath )
         return False
-    # Blacklist common files that won't be logs.   Never a complete list, but speeds up what it can
-    if (filepath.endswith('.rb')  or filepath.endswith('.gemspec') or filepath.endswith('.conf') or
-        filepath.endswith('.cpp') or filepath.endswith('.py')      or
-        filepath.endswith('.svn-base') or filepath.endswith('.html')    or
-        filepath.endswith('.gif') or filepath.endswith('.jpg')     or filepath.endswith('.png')
+    if ('atop_' in fullpath or basename.endswith('.jounal') or basename in ('btmp','wtmp')):
+        #print( "filename NO %r"%fullpath )
+        return False
+    if (fullpath.endswith('.rb')  or fullpath.endswith('.gemspec') or fullpath.endswith('.conf') or
+        fullpath.endswith('.cpp') or fullpath.endswith('.py')      or
+        fullpath.endswith('.svn-base') or fullpath.endswith('.html')    or
+        fullpath.endswith('.gif') or fullpath.endswith('.jpg')     or fullpath.endswith('.png')
         ):
+        #print( "filename NO %r"%fullpath )
         return False
-    return False
+    if fullpath.endswith('.OU') or fullpath.endswith('.ER'):  # Torque PBS's convention
+        #print( "filename MAYBE %r"%fullpath )
+        return True
+    if re.compile(r'\blog').search( os.path.basename(fullpath) ): # could be a little less wide, perhaps?
+        #print( "filename MAYBE %r"%fullpath )
+        return True
+    #print( "filename UNDECIDED,MAYBE %r"%fullpath )
+    return True
 
 
 def is_recent(filename, recency_minutes=60):
@@ -266,8 +273,8 @@ def is_recent(filename, recency_minutes=60):
     latest_time = max([stob.st_mtime,stob.st_ctime])
     tdiff_sec = int(time.time()-latest_time)
     #print( filename )
-    #print( 'latest change: %s'%latest_time )
-    #print( 'time ago:      %s hours '%round(tdiff_sec/3600., 1) )
+    #print( '  latest change: %s'%latest_time )
+    #print( '  time ago:      %s hours '%round(tdiff_sec/3600., 1) )
     if tdiff_sec < (60.*recency_minutes):
         return True
     return False
@@ -275,7 +282,7 @@ def is_recent(filename, recency_minutes=60):
 
 def is_nonbinary(filename=None, data=None, amt=200):
     """ Given either a filename or some data from it, returns whether this is probably text, rather than binary data.
-        amt: controls how much of data we use (or how much to read from the filename)
+        amt: controls how much of data we use, or how much to read from the filename to be opened
 
         Written for 'is this possibly a log' test, so specialcases compressed files because of log rotation.
     """
@@ -317,17 +324,15 @@ def is_nonbinary(filename=None, data=None, amt=200):
         else:
             return False
 
-def islogfile_cheapguess(filename=None,data=None, amt=200):
-    return is_nonbinary(filename, data, amt)
-
-
-
 
 
 
 
 class Rescanner(object):
-    ''' The bulk of the logic checking for new files and new units. '''
+    ''' The bulk of the logic checking for new files and new units. 
+
+        TODO: This class has taken on too many tasks (sort of the Main class), we should restructure.
+    '''
     def __init__(self,
                  scan_dirs=[b'/var/log'],
                  add_home=False,
@@ -338,6 +343,7 @@ class Rescanner(object):
                  nomatch_rescan_interval_sec=5,
                  verbose=False,
                  add_time=True,
+                 truecolor=False,
                  ):
         """ Constructor takes most settings.
             add_home         - look in current user's home directory
@@ -346,11 +352,32 @@ class Rescanner(object):
             If onlys isn't None or [], it is used as a whitelist of substrings that have to appear somewhere in the path.
             This lets you easily filter for some specific named logs (or directories)
         """
+       
 
+        def print_message(source, message):
+            " Unify printing style. "
+            # CONSIDER: detecting and doing 256 colors when we can
+            # CONSIDER: I didn't I have a function for this?
+            alisource = '%25s'%source
+            if sc==None: # we specified --no-color, or that color helper wasn't there
+                sys.stdout.write( alisource  )
+            else:
+                if truecolor:
+                    sys.stdout.write( sc.hash_color( alisource, rgb=True ) )
+                else: # basic ~8 colors plus some bright variants (or none if the helper detected no color support)
+                    color_funcs = [ sc.blue, sc.red, sc.green, sc.cyan, sc.magenta, sc.yellow, sc.brightblue, sc.brightred, sc.brightcyan, sc.brightmagenta, sc.brightyellow, sc.brightgreen ]
+                    strhash = sum( ord(ch)  for ch in source )
+                    sys.stdout.write( color_funcs[strhash%len(color_funcs)]( alisource ) )
+            sys.stdout.write( ': ')
+            sys.stdout.write( message.rstrip() )
+            sys.stdout.write( '\n')
+            sys.stdout.flush()
+
+        
         # members of main class, so that the scopey references are a little ugly
-        self.tf = TailFollower()
+        self.tf = TailFollower(     print_message )
         self.tf.start_thread( )
-        self.jr = JournalctlReader( add_time=True )
+        self.jr = JournalctlReader( print_message, add_time=True )
         self.jr.start_thread( )
          
         self.verbose = verbose
@@ -432,7 +459,6 @@ class Rescanner(object):
                 print( "  unit set now %s"%units_now )
         self.log_units = units_now
 
-        
     
     def rescan_filelogs(self):
         """ Scans for logs with the configuration as listed in the obeject.
@@ -449,29 +475,28 @@ class Rescanner(object):
         if self.add_home: # TODO: we may want more restrictions here, e.g. looking only for filenames ending in .log
             scan_dirs.append( os.path.expanduser('~') )
         
+        sawfiles_num = 0
         for scan_dir in self.scan_dirs:
             if self.verbose:
                 print( "\n ...in %s"%scan_dir )
             try:
                 # this indexing also does most filtering
-                sawfiles_num = 0
                 for curdir, _, files in os.walk( os.path.abspath(scan_dir) ):
                     for filename in files:
                         fullpath = os.path.join(curdir,filename)
                         sawfiles_num += 1
-                    
-                        # ONLY if whitelist is specified do we use it as a "only allow things that are in this"
+                        
+                        # only if onlys is specified do we use it as a "only allow things that are in this"
                         # (so it's white+black, all+black, or neither)
                         if self.onlys!=None and len(self.onlys)>0:
                             whitelist_condition = False
                             for filtstr in self.onlys:
-                                #print('%r %r'%(filtstr,fullpath))
                                 if filtstr in fullpath:
                                     whitelist_condition = True
                                     break
                             if not whitelist_condition:
                                 if self.verbose:
-                                    print( "%60r  Doesn't match whitelist"%fullpath )
+                                    print( "%60r  Doesn't match onlys"%fullpath )
                                 continue
                         
                         if self.nots!=None and len(self.nots)>0:
@@ -482,34 +507,42 @@ class Rescanner(object):
                                     break
                             if blacklist_condition:
                                 if self.verbose:
-                                    print( "%60r  Matches blacklist"%fullpath)
+                                    print( "%60r  Matches nots"%fullpath)
                                 continue
-                        
-                        # above the content guess. when this applies, we avoid file operations
+
+                        if path_indicates_possible_log( fullpath ) == False:
+                            if self.verbose:
+                                print( "%60r  Filename doesn't look like log"%fullpath )
+                            continue
+                            
+                        # above the content guess, below the filename based guess, because of relative cost
+                        # (though mtime test should be essentially free because os.walk stats too)
                         if self.recency_minutes:
+                            #print( self.recency_minutes )
                             if not is_recent(fullpath, recency_minutes=recency_minutes):
                                 if self.verbose:
                                     print( "%60r  Not recent"%fullpath )
                                 continue
 
-                        is_log = islogfile_cheapguess(filename=fullpath)
-                        if is_log:
+                        likely_log = is_nonbinary(fullpath, amt=400)
+                        if not likely_log:
+                            if self.verbose:
+                                print( "%60r  Contents do not look like log"%fullpath )
+                        else:
                             if self.verbose:
                                 print( "%60r  Looks good"%fullpath )
                             justnow_filenames.append(fullpath)
-                        else:
-                            if self.verbose:
-                                print( "%60r  Does not look like log  (or is compresed)"%fullpath )
-                if self.verbose:
-                    print("scanned %d files for logness"%sawfiles_num)
+                                
+                #if self.verbose:
+                #    print("scanned %d files for logness"%sawfiles_num)
                                 
             except Exception as exception:
                 #if self.verbose:
                 sys.stderr.write( "Error (%s), ignoring..."%str(exception))
                 raise
 
-        if self.verbose:           
-            print( "\nDone, found %d logs"%len(justnow_filenames) )
+        if self.verbose:
+            print( "\nDone, found %d logs (in %d files)"%( len(justnow_filenames), sawfiles_num ) )
 
         # Check whether we saw new filenames
         #   we only care about seeing files we had not seen before,
@@ -523,8 +556,7 @@ class Rescanner(object):
 
 
     def scan_and_follow(self):
-        """ Scans, runs a tail subprocess on the result.
-        """
+        """ Scans, runs a tail subprocess on the result. """
         while True:
             # updates some of our state
             self.rescan_systemdunits()                    
@@ -554,6 +586,7 @@ class Rescanner(object):
                     self.jr.change( self.log_units )
 
                 if self.saw_new_filenames:
+                    #if self.verbose:
                     sys.stdout.write( 'Changing tail to listen to %d files\n'%len(self.log_filenames) )
                     sys.stdout.flush()
                     for filename in self.log_filenames: # thigns we already listen to will be ignored
@@ -589,7 +622,6 @@ if __name__=='__main__':
             except:
                 raise ValueError("don't understand value %r"%unit)
         for num,unit in things:
-            #print num,unit
             n = float(num)
             if unit[0]=='w':
                 n *= 60*60*24*7
@@ -616,8 +648,8 @@ if __name__=='__main__':
         parser.add_argument("-T", "--no-journalctl-time", action="store_false",  default=True,
                                 help="by default we add the time field to journalctil lines. Specify this to turn that off.")
                                 # CONSIDER: parameter to format that time
-        parser.add_argument("--recency",                  action="store",       default="1w",
-                                help="ignore logs with mtime/ctime older than this, defaults to 1w")
+        parser.add_argument("--recency",                  action="store",       default="1d",
+                                help="ignore logs with mtime/ctime older than this, defaults to 1d")
         parser.add_argument("--check-interval",           action="store",       default="30s",
                                 help="check for log source changes every this often, defaults to 30s")
         parser.add_argument("--scandirs",                 action="store",       default="/var/log/,/var/lib/log/",
@@ -626,6 +658,8 @@ if __name__=='__main__':
                                 help="look for log-ish text files in homedir, defaults off since it's slow and may turn up crud.")
         parser.add_argument("-C", "--no-color",           action="store_true",  default=False,
                                 help="no coloring, even when context seems to support it.")        
+        parser.add_argument("-t", "--true-color",         action="store_true",  default=False,
+                                help="use true-color escapes, for more colors when you know it's supported")        
         parser.add_argument('-v', "--verbose",            action="store_true",  default=False,
                                 help="debug verbosity")
         args = parser.parse_args()
@@ -633,24 +667,19 @@ if __name__=='__main__':
         check_interval  = parse_hms( args.check_interval )
         recency_minutes = parse_hms( args.recency ) / 60.
         scan_dirs       = args.scandirs.split(',')
-        #if 'cluster-log' in sys.argv[0]: # different behaviour if executable is linked as a different name
-        #    scan_dirs = []
-        #    add_home = 1
         onlys, nots = [], []
         if args.onlys:
-            onlys = args.onlys.split(',')
+            onlys.extend( args.onlys.split(',') )
         if args.nots:
-            nots  = args.nots.split(',')
+            nots.extend(  args.nots.split(',')  )
 
+        #if 'follow-cluster-logs' in sys.argv[0]:  # different behaviour if executable is linked as a different name
+        #    scan_dirs = []
+        #    add_home = 1
+        #    onlys.extend( ['OU,ER] )
+        
         if args.no_color:
             sc = None
-            
-        if 0:
-            print( check_interval )
-            print( recency_minutes )
-            print( scan_dirs )
-            print( onlys )
-            print( nots )
             
         s = Rescanner( scan_dirs          = scan_dirs,
                        add_home           = args.home,
@@ -659,6 +688,7 @@ if __name__=='__main__':
                        onlys              = onlys,
                        nots               = nots,
                        verbose            = args.verbose,
+                       truecolor          = args.true_color,
         )
         
         print( "Looking for logs..." )
