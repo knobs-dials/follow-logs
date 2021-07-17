@@ -508,7 +508,7 @@ def _percent_parse(s, add=[]):
 
 
 
-def truncate_real_len(s,len, append=DEFAULT):
+def truncate_real_len(s,len, append=RESET):
     ''' Truncate a string after so-many real characters.
         Written for "truncate colored text according to the terminal width" functionality.
         
@@ -540,13 +540,13 @@ def truncate_real_len(s,len, append=DEFAULT):
 
 def cformat(fs, seq, fsinstead=False):
     """ EXPERIMENT:
-        A percent formatter that is aware of the zero-display-width of these escapes,
+        A percent formatter that is aware that color escapes have zero display width,
         so you can feed it strings with color escapes and avoid some magic reindenting weirdness.
         
         cformat(arg1,arg2) acts like arg1%arg2
 
         e.g. cformat('%20s', (WHITE+'fork'+RESET,) ) == '                \x1b[1;37mfork\x1b[0m\x1b[39m'
-                                             instead of '\x1b[1;37mfork\x1b[0m\x1b[39m'
+                                            instead of  '\x1b[1;37mfork\x1b[0m\x1b[39m'
 
         Assumption is that escapes have zero width, which is true for colors but not for weirder things.
     """
@@ -593,8 +593,8 @@ def true_colf(s, r,g,b):
      RGBCOL = '\x1b[38;2;%s;%s;%sm'%(r,g,b)
      return _add_color_if_supported(s,RGBCOL)
  
-def hash_color(s, rgb=False):
-    ' return a (non-black basic shell) color based on the string '
+def hash_color(s, rgb=False, append=RESET):
+    ' return string wrapped in a (non-black basic shell) color (and RESET after) based on the string '
     import hashlib
     m = hashlib.sha256()
     m.update(s.encode('u8'))
@@ -612,83 +612,80 @@ def hash_color(s, rgb=False):
                        YELLOW, BRIGHTYELLOW, BLUE, BRIGHTBLUE, MAGENTA,
                        BRIGHTMAGENTA, CYAN, BRIGHTCYAN, GREY, WHITE     ]
         choice = choosefrom[ sum(ch for ch in dig)%len(choosefrom) ]
-        return '%s%s%s'%(choice,s,DEFAULT)
+        return '%s%s%s'%(choice,s,append)
 
 
+    
 def test():
-    print( CLEARSCREEN )
+    #print( CLEARSCREEN )
 
-    for i in range(0,100,5):
-        print( color_degree('foo', i,0,100) )
-        
-    teststrs = 'dfgadfg','23434','foo','var','bar'
-    print( "hash_color, standard color set" )
-    for s in teststrs:
-        print( hash_color(s) )
-        
-    print( "hash_color, true color" )
-    for s in teststrs:
-        print( hash_color(s,rgb=True) )
-        
+    if 0:
+        print( '\n-- color_degree test --' )
+        for i in range(0,100,5):
+            print( color_degree('foo', i,0,100) )
 
-        
-    return
+    if 1:
+        teststrs = 'dfgadfg','23434','foo','var','bar','bla','more','quu','dfdfgdgdf'
+        print( '\n-- hash_color test, standard color set --' )
+        for s in teststrs:
+            print( hash_color(s) )
 
-    print("")
-    print( '-'*30,"Some prints" )
+        print( '\n-- hash_color test, true color --' )
+        for s in teststrs:
+            #print( repr(hash_color(s,rgb=True)) )
+            print( hash_color(s,rgb=True) )
+            
+    if 0:
+        print( '\n-- explicit color codes --' )
+        try:
+            print( UNDERLINE+'underline'+RESET )
 
-    try:
-        print( UNDERLINE+'underline'+RESET )
+            print( BRIGHTBLACK   +'BRIGHTBLACK'+RESET )         #actually only makes sense with a different background
+            print( BLACK         +'BLACK'+RESET )          #actually only makes sense with a different background
+            print( RED           +'RED'+RESET )
+            print( BRIGHTRED     +'BRIGHTRED'+RESET )
+            print( GREEN         +'GREEN'+RESET )
+            print( BRIGHTGREEN   +'BRIGHTGREEN'+RESET )
+            print( YELLOW        +'YELLOW / ORANGE'+RESET )
+            print( BRIGHTYELLOW  +'BRIGHTYELLOW'+RESET )
+            print( BLUE          +'BLUE' +RESET )
+            print( BRIGHTBLUE    +'BRIGHTBLUE'+RESET )
+            print( MAGENTA       +'MAGENTA'+RESET )
+            print( BRIGHTMAGENTA +'BRIGHTMAGENTA'+RESET )
+            print( CYAN          +'CYAN'+RESET )
+            print( BRIGHTCYAN    +'BRIGHTCYAN'+RESET )
+            print( GREY          +'GREY'+RESET )
+            print( BRIGHTGREY    +'BRIGHTGREY / WHITE'+RESET )
 
-        print( BRIGHTBLACK   +'BRIGHTBLACK'+RESET )         #actually only makes sense with a different background
-        print( BLACK         +'BLACK'+RESET )          #actually only makes sense with a different background
-        print( RED           +'RED'+RESET )
-        print( BRIGHTRED     +'BRIGHTRED'+RESET )
-        print( GREEN         +'GREEN'+RESET )
-        print( BRIGHTGREEN   +'BRIGHTGREEN'+RESET )
-        print( YELLOW        +'YELLOW / ORANGE'+RESET )
-        print( BRIGHTYELLOW  +'BRIGHTYELLOW'+RESET )
-        print( BLUE          +'BLUE' +RESET )
-        print( BRIGHTBLUE    +'BRIGHTBLUE'+RESET )
-        print( MAGENTA       +'MAGENTA'+RESET )
-        print( BRIGHTMAGENTA +'BRIGHTMAGENTA'+RESET )
-        print( CYAN          +'CYAN'+RESET )
-        print( BRIGHTCYAN    +'BRIGHTCYAN'+RESET )
-        print( GREY          +'GREY'+RESET )
-        print( BRIGHTGREY    +'BRIGHTGREY / WHITE'+RESET )
+            print( RESET+'default'         )
 
-        print( RESET+'default'         )
-
-    except:
-        print( RESET )
-
-
-  
-    print("")
-    print( '-'*30, "Testing percent-string parser" )
-    s = ' a  %%  qq  %.5d %30s  % -31.7f '
-    print( s )
-    print( "plus 0 0 5 9" )
-    print( _percent_parse(s, [0,0,5,9]) )
+        except:
+            print( RESET )
 
 
-    print("")
-    print( '-'*30, "Testing control-code awareness in cformat()" )
+    if 1:
+        print( '\n-- Testing percent-string parser --' )
+        s = ' a  %%  qq  %.5d %30s  % -31.7f '
+        print( s )
+        print( "plus 0 0 5 9" )
+        print( _percent_parse(s, [0,0,5,9]) )
 
-    for test in (  BLACK+'fork',
-                   BRIGHTBLACK+'fork',
-                ):
-        print( 'test string: %r'%test )
-        fs='%35s'
-        print( 'format string: %r'%fs )
-        newfs= cformat(fs, (test,), True )
-        print( 'rewritten format string: %r'%newfs )
-        print( cformat('%35s', (test,) )  )
-        #print cformat('%35r', test )
-        print( RESET )
 
-    print( '-'*30 )
-    print("")
+    if 1:
+        print( '\n-- Testing control-code awareness in cformat() --' )
+
+        for test in (  BLACK+'fork',
+                       BRIGHTBLACK+'fork',
+                    ):
+            print( 'test string: %r'%test )
+            fs='%35s'
+            print( 'format string: %r'%fs )
+            newfs= cformat(fs, (test,), True )
+            print( 'rewritten format string: %r'%newfs )
+            print( cformat('%35s', (test,) )  )
+            #print cformat('%35r', test )
+            print( RESET )
+
 
 
 
