@@ -58,8 +58,14 @@ optional arguments:
   -v, --verbose         debug verbosity
 ```
 
+## Notes:
+- will work without helpers_shellcolor, but coloring the source names is nice for visual parsing
+
+- has its own imitation of `tail -F`, because the tail command didn't seem to deal with logrotate yoinking the file for more than a second or two
+
+
 ## TODO:
-- it's almost certain there are some edge cases in the tail imitation that I haven't thought of yet. I'll get to it.
+- it seens likely there are some edge cases in the tail imitation that I haven't thought of yet. I'll get to it.
 
 - systemd related:
   - check that the systemd logic actually picks up new units
@@ -68,13 +74,9 @@ optional arguments:
 - think about optimizations. Scanning a /var/log with thousands of files is slow, hence the low-ish default scan interval 
   - In particular, consider inotify or similar
 
+- detangle code in general, and to ease adding further log sources (e.g. docker logs)
+
+
+## CONSIDER:
 - 'start with n recent lines when opening logs' in both log sources
 
-- detangle code to ease adding further log sources (e.g. docker logs)
-
-- see about using more colors
-
-## Notes:
-- will work without helpers_shellcolor, but coloring the source names is nice for visual parsing
-
-- has its own imitation of `tail -F`, because the tail command didn't seem to deal with logrotate yoinking the file for more than a second or two
