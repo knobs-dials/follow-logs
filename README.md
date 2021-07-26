@@ -26,6 +26,9 @@ Changing tail to listen to 74 files
            munin-node.log: 2021/06/26-17:40:12 [748]    cat: /dev/shm/munin_netuser_vals_conf: No such file or directory
            munin-node.log: 2021/06/26-17:40:12 [748] Service 'netuser' exited with status 1/0.
 ```
+Or for the pretty colors (using -t):
+![colored logs](/screenshots/somelogs.png?raw=true)
+
 
 ## Arguments
 ```
