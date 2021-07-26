@@ -250,6 +250,13 @@ def path_indicates_possible_log(fullpath):
     if ('atop_' in fullpath or basename.endswith('.jounal') or basename in ('btmp','wtmp')):
         #print( "filename NO %r"%fullpath )
         return False
+    if (fullpath.endswith('.1') or fullpath.endswith('.2') or fullpath.endswith('.3') or
+        fullpath.endswith('.4') or fullpath.endswith('.5') or fullpath.endswith('.6') or
+        fullpath.endswith('.7') or fullpath.endswith('.8') or fullpath.endswith('.9')
+        ): # assume these are rotated. This may be overzealous, though ito won't be current logs. Hm.
+        #print( "filename NO %r"%fullpath )
+        return False
+
     if (fullpath.endswith('.rb')  or fullpath.endswith('.gemspec') or fullpath.endswith('.conf') or
         fullpath.endswith('.cpp') or fullpath.endswith('.py')      or
         fullpath.endswith('.svn-base') or fullpath.endswith('.html')    or
@@ -656,6 +663,12 @@ if __name__=='__main__':
                                 help="paths to look for logs under, comma-separated, defaults to /var/log/,/var/lib/log/ ")
         parser.add_argument("--home",                     action="store_true",  default=False,
                                 help="look for log-ish text files in homedir, defaults off since it's slow and may turn up crud.")
+
+        #parser.add_argument("-g", "--grep",               action="store",       default=None,  help="only print messages containing")        
+        #parser.add_argument("-G", "--grep-out",           action="store",       default=None,  help="don't print messages containing")        
+        #parser.add_argument("-c", "--force-color",         action="store_true",  default=False,
+        #                        help="force colors, even if context suggests it is not supported")        
+        
         parser.add_argument("-C", "--no-color",           action="store_true",  default=False,
                                 help="no coloring, even when context seems to support it.")        
         parser.add_argument("-t", "--true-color",         action="store_true",  default=False,
