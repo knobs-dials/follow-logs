@@ -9,7 +9,7 @@
   - e.g. `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
 - Picks up new matching logs as they appear
 - unified output format
-  - coloring by source, as it's easier to parse visually
+  - coloring by source, making it easier to parse visually
 
 ## EXAMPLE
 ```  
