@@ -9,6 +9,7 @@
   - e.g. `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
 - Picks up new matching logs as they appear
 - unified output format
+  - indicating systemd with square brackets, files without  
   - coloring by source, making it easier to parse visually
 
 ## EXAMPLE
