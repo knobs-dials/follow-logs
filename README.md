@@ -13,8 +13,9 @@
   - coloring by source, making it easier to parse visually
 
 ## EXAMPLE
-```  
-With pretty colors, using -t:
+
+With pretty colors, using `-t`:
+
 ![colored logs](/screenshots/somelogs.png?raw=true)
 
 
