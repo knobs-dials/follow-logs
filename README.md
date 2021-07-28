@@ -14,7 +14,7 @@
 
 ## EXAMPLE
 
-With pretty colors, using `-t`:
+Using `follow-logs -t -n access,laptop` (pretty colors, exclude apache access and laptop mode)
 
 ![colored logs](/screenshots/somelogs.png?raw=true)
 
