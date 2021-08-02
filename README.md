@@ -1,15 +1,19 @@
 "Just show me all relevant logs" in fewer keystrokes.
 - Reads from file logs and systemd
-- allows **filtering** of which filenames and unit names to include/exclude, by substrings (in absolute pathname, and unit name)
-  - e.g. `-n access` goes a long way to show everything except apache access logs
-  - e.g. `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
-- **Picks up new matching logs** as they appear
+- allows filtering of which filenames and unit names to include/exclude, by substrings
+- Picks up new matching logs as they appear
 - unifies output format
   - indicating systemd with square brackets, files without  
   - coloring by log name, making it easier to parse visually
   - (adding date to systemd messages)
 
+
 ## EXAMPLE
+
+Negative filter ('not') : `-n access` goes a long way to show everything except apache access logs
+
+Positive filter ('only'): `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
+
 
 `follow-logs -t -n access,laptop` (pretty colors, exclude apache access logs, and laptop mode _unit_)
 
