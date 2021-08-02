@@ -432,7 +432,7 @@ class Rescanner(object):
                         whitelist_condition = True
                         break
                 if not whitelist_condition:
-                    if self.verbose:
+                    if self.verbose >= 2:
                         print( "%60r  Doesn't match whitelist"%unit )
                     continue
 
@@ -443,7 +443,7 @@ class Rescanner(object):
                         blacklist_condition=True
                         break
                 if blacklist_condition:
-                    if self.verbose:
+                    if self.verbose >= 2:
                         print( "%60r  Matches blacklist"%unit )
                     continue
             
@@ -461,9 +461,10 @@ class Rescanner(object):
             self.saw_new_units = False
         else:
             self.saw_new_units = True
-            if self.verbose:
-                print( "New units turned up: %s"%new_units )
-                print( "  unit set now %s"%units_now )
+            if self.verbose >= 1:
+                print( "NEW UNITS turned up: %s"%new_units )
+            #if self.verbose >= 2:
+            #    print( "  unit set now %s"%units_now )
         self.log_units = units_now
 
     
@@ -471,7 +472,7 @@ class Rescanner(object):
         """ Scans for logs with the configuration as listed in the obeject.
             Returns matching filenames.
         """
-        if self.verbose:
+        if self.verbose >= 2:
             if self.recency_minutes:
                 print( "Finding recently used files that look like logs..." )
             else:
@@ -484,8 +485,9 @@ class Rescanner(object):
         
         sawfiles_num = 0
         for scan_dir in self.scan_dirs:
-            if self.verbose:
+            if self.verbose >= 2:
                 print( "\n ...in %s"%scan_dir )
+
             try:
                 # this indexing also does most filtering
                 for curdir, _, files in os.walk( os.path.abspath(scan_dir) ):
@@ -502,7 +504,7 @@ class Rescanner(object):
                                     whitelist_condition = True
                                     break
                             if not whitelist_condition:
-                                if self.verbose:
+                                if self.verbose >= 2:
                                     print( "%60r  Doesn't match onlys"%fullpath )
                                 continue
                         
@@ -513,12 +515,12 @@ class Rescanner(object):
                                     blacklist_condition=True
                                     break
                             if blacklist_condition:
-                                if self.verbose:
+                                if self.verbose >= 2:
                                     print( "%60r  Matches nots"%fullpath)
                                 continue
 
                         if path_indicates_possible_log( fullpath ) == False:
-                            if self.verbose:
+                            if self.verbose >= 2:
                                 print( "%60r  Filename doesn't look like log"%fullpath )
                             continue
                             
@@ -527,16 +529,16 @@ class Rescanner(object):
                         if self.recency_minutes:
                             #print( self.recency_minutes )
                             if not is_recent(fullpath, recency_minutes=recency_minutes):
-                                if self.verbose:
+                                if self.verbose >= 2:
                                     print( "%60r  Not recent"%fullpath )
                                 continue
 
                         likely_log = is_nonbinary(fullpath, amt=400)
                         if not likely_log:
-                            if self.verbose:
+                            if self.verbose >= 2:
                                 print( "%60r  Contents do not look like log"%fullpath )
                         else:
-                            if self.verbose:
+                            if self.verbose >= 2:
                                 print( "%60r  Looks good"%fullpath )
                             justnow_filenames.append(fullpath)
                                 
@@ -548,7 +550,7 @@ class Rescanner(object):
                 sys.stderr.write( "Error (%s), ignoring..."%str(exception))
                 raise
 
-        if self.verbose:
+        if self.verbose >= 2:
             print( "\nDone, found %d logs (in %d files)"%( len(justnow_filenames), sawfiles_num ) )
 
         # Check whether we saw new filenames
@@ -559,6 +561,8 @@ class Rescanner(object):
             self.saw_new_filenames = False
         else:
             self.saw_new_filenames = True                        
+            if self.verbose >= 1:
+                print( "NEW FILES turned up: %s"%new_files )
         self.log_filenames = justnow_filenames
 
 
@@ -569,38 +573,36 @@ class Rescanner(object):
             self.rescan_systemdunits()                    
             self.rescan_filelogs()     
 
+            if self.verbose >= 2:
+                print( "\nMatching log files: %r"%self.log_filenames )
+                print( "\nMatching systemd units: %r"%self.log_units )
+
             if len(self.log_filenames)==0 and len(self.log_units)==0: # no matching logs at all.
                 # Usually means no matches when starting up because of overly strict filters
                 # can also mean all matching logs were removed.
                 # In either case, we keep rescanning
-                print( "No matching logs, waiting until some do" )
-                # note: will skip both blocks below and do only the interval sleep
-
-            if self.verbose:
-                print( "\nMatching log files: %r"%self.log_filenames )
-                print( "\nMatching systemd units: %r"%self.log_units )
-
-            if not (self.saw_new_filenames or self.saw_new_units): # ...but nothing changed. Do nothing.
-                if self.verbose:
-                    print( "\nNo changes in matching logs" )
-                # note: will skip both blocks below and do only the interval sleep
+                print( "Zero matching logs, waiting until some do" )
             else:
-                
-                if self.saw_new_units:
-                    #if self.verbose:
-                    sys.stdout.write( 'Changing journalctl to listen to %d units\n'%len(self.log_units) )
-                    sys.stdout.flush()
-                    self.jr.change( self.log_units )
+                if self.saw_new_filenames==False and self.saw_new_units==False: # ...but nothing changed. Do nothing.
+                    if self.verbose >= 1:
+                        print( "\nNo changes in matching logs" )
+                    # note: will skip both blocks below and do only the interval sleep
+                else:
+                    if self.saw_new_units:
+                        #if self.verbose >= 1:
+                        sys.stdout.write( 'Changing journalctl to listen to %d units\n'%len(self.log_units) )
+                        sys.stdout.flush()
+                        self.jr.change( self.log_units )
 
-                if self.saw_new_filenames:
-                    #if self.verbose:
-                    sys.stdout.write( 'Changing tail to listen to %d files\n'%len(self.log_filenames) )
-                    sys.stdout.flush()
-                    for filename in self.log_filenames: # thigns we already listen to will be ignored
-                        self.tf.add_filename( filename )
+                    if self.saw_new_filenames:
+                        #if self.verbose >= 1:
+                        sys.stdout.write( 'Changing tail to listen to %d files\n'%len(self.log_filenames) )
+                        sys.stdout.flush()
+                        for filename in self.log_filenames: # thigns we already listen to will be ignored
+                            self.tf.add_filename( filename )
             
             ### 
-            if self.verbose:
+            if self.verbose >= 2:
                 print( "Sleeping %.1f"%self.check_interval_sec )
             time.sleep( self.check_interval_sec )
 
@@ -673,8 +675,7 @@ if __name__=='__main__':
                                 help="no coloring, even when context seems to support it.")        
         parser.add_argument("-t", "--true-color",         action="store_true",  default=False,
                                 help="use true-color escapes, for more colors when you know it's supported")        
-        parser.add_argument('-v', "--verbose",            action="store_true",  default=False,
-                                help="debug verbosity")
+        parser.add_argument('-v', "--verbose",            action="count",  default=0,   help="debug verbosity  (0, 1, 2)")
         args = parser.parse_args()
         
         check_interval  = parse_hms( args.check_interval )
