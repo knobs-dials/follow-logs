@@ -15,7 +15,7 @@
 
 ## EXAMPLE
 
-`follow-logs -t -n access,laptop` (pretty colors, exclude apache access and laptop mode)
+`follow-logs -t -n access,laptop` (pretty colors, exclude apache access and laptop mode _unit_)
 
 ![colored logs](/screenshots/somelogs.png?raw=true)
 
