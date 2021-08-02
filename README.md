@@ -48,6 +48,7 @@ optional arguments:
   -C, --no-color        no coloring, even when context seems to support it.
   -t, --true-color      use true-color escapes, for more colors when you know
                         it's supported
+  -v, --verbose         debug verbosity
 ```
 
 ## Notes:
