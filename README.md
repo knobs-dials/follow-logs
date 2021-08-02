@@ -60,9 +60,7 @@ optional arguments:
 ## TODO:
 - it seens likely there are some edge cases in the tail imitation that I haven't thought of yet. I'll get to it.
 
-- systemd related:
-  - check that the systemd logic actually picks up new units
-  - think of what non-units to show (e.g. .scope for login sessions are nice to see)
+- think of what systemd non-units to potentially show (e.g. .scope for login sessions may be nice to see)
 
 - think about optimizations. Scanning a /var/log with thousands of files is slow, hence the low-ish default scan interval 
   - In particular, consider inotify or similar
