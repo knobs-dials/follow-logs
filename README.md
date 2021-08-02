@@ -1,10 +1,6 @@
 "Just show me all relevant logs" in fewer keystrokes.
-- Reads from 
-  - **files** 
-    - by default under under `/log/var` and `/var/lib/log/`
-    - avoiding old logs, and compressed logs and other binary files
-  - **systemd logs**
-- Lets you **filter** filenames and unit names, including/excluding by substrings (in absolute pathname, and unit name)
+- Reads from file logs and systemd
+- allows **filtering** of which filenames and unit names to include/exclude, by substrings (in absolute pathname, and unit name)
   - e.g. `-n access` goes a long way to show everything except apache access logs
   - e.g. `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
 - **Picks up new matching logs** as they appear
