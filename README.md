@@ -10,7 +10,7 @@
 - **Picks up new matching logs** as they appear
 - unifies output format
   - indicating systemd with square brackets, files without  
-  - coloring by source, making it easier to parse visually
+  - coloring by log name, making it easier to parse visually
 
 ## EXAMPLE
 
