@@ -2,10 +2,7 @@
 - Reads from file logs and systemd
 - allows filtering of which filenames and unit names to include/exclude, by substrings
 - Picks up new matching logs as they appear
-- unifies output format
-  - indicating systemd with square brackets, files without  
-  - coloring by log name, making it easier to parse visually
-  - (adding date to systemd messages)
+- unifies output format, with colors
 
 
 ## EXAMPLE
@@ -18,6 +15,10 @@ Positive filter ('only'): `-o error,local` goes a long way to show only apache e
 `follow-logs -t -n access,laptop` (pretty colors, exclude apache access logs, and laptop mode _unit_)
 
 ![colored logs](/screenshots/somelogs.png?raw=true)
+
+Where
+  - systemd is indicated with square brackets, files without  
+  - coloring by log name, making it easier to parse visually
 
 
 ## Arguments
