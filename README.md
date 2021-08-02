@@ -7,13 +7,9 @@
 
 ## EXAMPLE
 
-Negative filter ('not') : `-n access` goes a long way to show everything except apache access logs
-
 Positive filter ('only'): `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
 
-
-`follow-logs -t -n access,laptop` (pretty colors, exclude apache access logs, and laptop mode _unit_)
-
+Negative filter ('not') : `-n access` goes a long way to show everything except apache access logs
 ![colored logs](/screenshots/somelogs.png?raw=true)
 
 Where
