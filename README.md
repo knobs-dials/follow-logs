@@ -37,7 +37,7 @@ optional arguments:
                         by default we add the time field to journalctil lines.
                         Specify this to turn that off.
   --recency RECENCY     ignore logs with mtime/ctime older than this, defaults
-                        to 1w
+                        to 1d
   --check-interval CHECK_INTERVAL
                         check for log source changes every this often,
                         defaults to 30s
@@ -48,7 +48,6 @@ optional arguments:
   -C, --no-color        no coloring, even when context seems to support it.
   -t, --true-color      use true-color escapes, for more colors when you know
                         it's supported
-  -v, --verbose         debug verbosity
 ```
 
 ## Notes:
