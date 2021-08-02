@@ -52,13 +52,13 @@ optional arguments:
 ```
 
 ## Notes:
-- will work without helpers_shellcolor, but coloring the source names is nice for visual parsing
+- will work without helpers_shellcolor.py, but coloring the source names is nice for visual parsing
 
 - has its own imitation of `tail -F`, because the tail command didn't seem to deal with logrotate yoinking the file for more than a second or two
 
 
 ## TODO:
-- it seens likely there are some edge cases in the tail imitation that I haven't thought of yet. I'll get to it.
+- test the tail thing for weird edge cases
 
 - think of what systemd non-units to potentially show (e.g. .scope for login sessions may be nice to see)
 
@@ -66,8 +66,3 @@ optional arguments:
   - In particular, consider inotify or similar
 
 - detangle code in general, and to ease adding further log sources (e.g. docker logs)
-
-
-## CONSIDER:
-- 'start with n recent lines when opening logs' in both log sources
-
