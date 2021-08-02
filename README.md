@@ -7,9 +7,9 @@
 
 ## EXAMPLE
 
-Positive filter ('only'): `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have
+Positive filter ('only'): `-o error,local` goes a long way to show only apache errors and a LOCAL0 log I have.
 
-Negative filter ('not') : `-n access` goes a long way to show everything except apache access logs
+Negative filter ('not') : `-n access` goes a long way to show everything except apache access logs:
 ![colored logs](/screenshots/somelogs.png?raw=true)
 
 Where
