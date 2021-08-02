@@ -11,6 +11,7 @@
 - unifies output format
   - indicating systemd with square brackets, files without  
   - coloring by log name, making it easier to parse visually
+  - (adding date to systemd messages)
 
 ## EXAMPLE
 
