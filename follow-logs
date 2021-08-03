@@ -338,19 +338,21 @@ def is_nonbinary(filename=None, data=None, amt=200):
 class Rescanner(object):
     ''' The bulk of the logic checking for new files and new units. 
 
-        TODO: This class has taken on too many tasks (sort of the Main class), we should restructure.
+        TODO: This class has taken on too many responsibilities, we should restructure.
     '''
     def __init__(self,
-                 scan_dirs=[b'/var/log'],
-                 add_home=False,
-                 onlys=None,
-                 nots=None,                 
-                 recency_minutes=24.0*60.,
-                 check_interval_sec=20,
-                 nomatch_rescan_interval_sec=5,
-                 verbose=False,
-                 add_time=True,
-                 truecolor=False,
+                 scan_dirs = [b'/var/log'],
+                 add_home = False,
+                 onlys = None,
+                 nots = None,
+                 grep = None,
+                 grepout = None,
+                 recency_minutes = 24.0*60.,
+                 check_interval_sec = 20,
+                 nomatch_rescan_interval_sec = 5,
+                 verbose = False,
+                 add_time = True,
+                 truecolor = False,
                  ):
         """ Constructor takes most settings.
             add_home         - look in current user's home directory
@@ -365,6 +367,14 @@ class Rescanner(object):
             " Unify printing style. "
             # CONSIDER: detecting and doing 256 colors when we can
             # CONSIDER: I didn't I have a function for this?
+
+            if grep!=None: # CONSIDER comma separated?
+                if grep not in message:
+                    return
+            elif grepout!=None:
+                if grep in message:
+                    return                
+            
             alisource = '%25s'%source
             if sc==None: # we specified --no-color, or that color helper wasn't there
                 sys.stdout.write( alisource  )
@@ -462,7 +472,7 @@ class Rescanner(object):
         else:
             self.saw_new_units = True
             if self.verbose >= 1:
-                print( "NEW UNITS turned up: %s"%new_units )
+                print( "NEW UNITS turned up:   %s"%( ', '.join( sorted([v.replace('.service','') for v in new_units]) ))  )
             #if self.verbose >= 2:
             #    print( "  unit set now %s"%units_now )
         self.log_units = units_now
@@ -562,7 +572,7 @@ class Rescanner(object):
         else:
             self.saw_new_filenames = True                        
             if self.verbose >= 1:
-                print( "NEW FILES turned up: %s"%new_files )
+                print( "NEW FILES turned up:   %s"% ', '.join(new_files) )
         self.log_filenames = justnow_filenames
 
 
@@ -666,15 +676,16 @@ if __name__=='__main__':
         parser.add_argument("--home",                     action="store_true",  default=False,
                                 help="look for log-ish text files in homedir, defaults off since it's slow and may turn up crud.")
 
-        #parser.add_argument("-g", "--grep",               action="store",       default=None,  help="only print messages containing")        
-        #parser.add_argument("-G", "--grep-out",           action="store",       default=None,  help="don't print messages containing")        
-        #parser.add_argument("-c", "--force-color",         action="store_true",  default=False,
-        #                        help="force colors, even if context suggests it is not supported")        
+        parser.add_argument("-g", "--grep",               action="store",       default=None,  help="only print messages containing substring")        
+        parser.add_argument("-G", "--grep-out",           action="store",       default=None,  help="don't print messages containing substring")
         
+        #parser.add_argument("-c", "--force-color",         action="store_true",  default=False,
+        #                        help="force colors, even if context suggests it is not supported (potentially useful in pipes)")        
         parser.add_argument("-C", "--no-color",           action="store_true",  default=False,
                                 help="no coloring, even when context seems to support it.")        
         parser.add_argument("-t", "--true-color",         action="store_true",  default=False,
-                                help="use true-color escapes, for more colors when you know it's supported")        
+                                help="use true-color escapes, for more colors when you know it's supported")
+        
         parser.add_argument('-v', "--verbose",            action="count",  default=0,   help="debug verbosity  (0, 1, 2)")
         args = parser.parse_args()
         
@@ -701,6 +712,8 @@ if __name__=='__main__':
                        check_interval_sec = check_interval,
                        onlys              = onlys,
                        nots               = nots,
+                       grep               = args.grep,
+                       grepout            = args.grep_out,
                        verbose            = args.verbose,
                        truecolor          = args.true_color,
         )
