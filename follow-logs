@@ -1,7 +1,4 @@
 #!/usr/bin/python3
-" Convenience around tail -F  and  journalctl  "
-#
-
 import os
 import sys
 import time
@@ -21,8 +18,7 @@ except ImportError:
 
     
 class TailFollower(object):
-    """ Imitation of tail -F on multiple files
-        The actual tail -F seems to give up in some cases, which we can't control.  
+    """ Imitation of tail -F, because actual tail -F seems to give up in some cases, which we can't control.  
         Could stand some further testing.
     """
     def __init__(self, print_callback):
@@ -31,6 +27,7 @@ class TailFollower(object):
         self.print_callback = print_callback
         
     def add_filename(self, filename):
+        ' start following another filename '
         if not os.path.exists(filename):
             raise OSError('File does not exist')
         if filename not in self.data:
@@ -40,17 +37,18 @@ class TailFollower(object):
             self.data[filename] = (fob, ino)
 
     def remove_filename(self, filename):
+        ' stop following a filename '
         if filename in self.data:
             fob, ino = self.data[filename]
             fob.close()
-        del self.data[filename]
+            del self.data[filename]
         
     def update(self):
-        ''' one cycle of dealing with what changed - checks that files are still there, and the same files '''
+        ''' one cycle of dealing with what files may have changed - checks that files are still there, and are still the same files '''
         # should deal with
         # - filename disappearing, and later reappearing (os.path.exists False somewhere. inode is not relevant)
-        # - file being replaced   (different inode; close and open)
-        # ...largely because logrotate may cause both, depending on config and how fast it is
+        # - file being replaced   (different inode; should close and open)
+        # ...largely because logrotate may cause both, depending on its config and how fast it is
         
         for filename in sorted(self.data.keys()):
             #print( "checking %s"%filename )
@@ -127,7 +125,8 @@ class JournalctlReader(object):
         self.print_callback = print_callback
         # TODO: take recency and turn into   --since "2 hours ago" style thing
         
-    def change(self, units):
+    def change_units(self, units):
+        ' start listening to new given set of units ' 
         if self.pid:
             os.kill( self.pid, signal.SIGKILL )
             self.proc.wait()
@@ -141,6 +140,7 @@ class JournalctlReader(object):
             cmd.extend( ['-u', unit] )
         #print( cmd )
         self.proc = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE)
+
         
     def update(self):
         ''' one cycle of dealing with what changed '''
@@ -158,7 +158,7 @@ class JournalctlReader(object):
 
                 msg  = d.get('MESSAGE')
 
-                if msg==None: # ...why, dammit. 
+                if msg==None: # ...why?
                     print( "MESSAGE missing in %r"%d ) # leaving this in to see what cases this is
                     return # I think we can ignore this, though?
                 
@@ -203,14 +203,15 @@ class JournalctlReader(object):
                     
                 elif transport=='audit':
                     #print( d ) # figuring out the fields
-                    sourcename = 'audit'                    
-                else: # right now no others exist (accordign to docs, at least)
+                    sourcename = 'audit'
+                    
+                else: # right now no others exist (accordign to docs, at least).   Though might it be missing?
                     #print( d ) # figuring out the fields
                     sourcename = transport
 
                 if self.add_time:
                     tve = d.get('_SOURCE_REALTIME_TIMESTAMP') # TODO: figure out which of the timestamps is most useful
-                    if tve!=None:
+                    if tve!=None: # fall back to printing the current time. Not ideal in terms of monotonicity, but more helpful than nothing. Put on parameter?
                         msg = datetime.datetime.fromtimestamp( float(tve)/1000000 ).strftime('%b %-d %H:%M:%S') + '  ' + msg
                     #else:
                     #    print( d )
@@ -254,7 +255,7 @@ def path_indicates_possible_log(fullpath):
     if (fullpath.endswith('.1') or fullpath.endswith('.2') or fullpath.endswith('.3') or
         fullpath.endswith('.4') or fullpath.endswith('.5') or fullpath.endswith('.6') or
         fullpath.endswith('.7') or fullpath.endswith('.8') or fullpath.endswith('.9')
-        ): # assume these are rotated. This may be overzealous, though ito won't be current logs. Hm.
+        ): # assume these are rotated. This may be overzealous, as it typically won't be current rnough to show anyway.
         #print( "filename NO %r"%fullpath )
         return False
 
@@ -276,7 +277,9 @@ def path_indicates_possible_log(fullpath):
 
 
 def is_recent(filename, recency_minutes=60):
-    ''' Returns true if the youngest of (mtime,ctime) for the file is no longer than some amount of minutes ago, compared to the system clock. '''
+    ''' Returns true if the youngest of (mtime,ctime) for the file is no longer than some amount of minutes ago
+        ...compared to the system clock, so take care e.g. on embedded systems without an RTC.
+    '''
     stob = os.stat(filename)
     latest_time = max([stob.st_mtime,stob.st_ctime])
     tdiff_sec = int(time.time()-latest_time)
@@ -603,7 +606,7 @@ class Rescanner(object):
                         #if self.verbose >= 1:
                         sys.stdout.write( 'Changing journalctl to listen to %d units\n'%len(self.log_units) )
                         sys.stdout.flush()
-                        self.jr.change( self.log_units )
+                        self.jr.change_units( self.log_units )
 
                     if self.saw_new_filenames:
                         #if self.verbose >= 1:
@@ -629,7 +632,7 @@ if __name__=='__main__':
         pass
 
     def parse_hms(v):
-        ''' string interval spec to seconds, e.g.  
+        ''' string interval spec to seconds, for times at most a bunch of days, e.g.  
              '1h30m' -> 5400, 
              '1 day, 30 min, 4 sec' -> 88204
             Very naive implementation (just looks for words starting with w,d,h,m,s)
@@ -702,7 +705,7 @@ if __name__=='__main__':
         #if 'follow-cluster-logs' in sys.argv[0]:  # different behaviour if executable is linked as a different name
         #    scan_dirs = []
         #    add_home = 1
-        #    onlys.extend( ['OU,ER] )
+        #    onlys.extend( ['OU','ER'] )
         
         if args.no_color:
             sc = None
