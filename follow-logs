@@ -21,7 +21,8 @@ except ImportError:
 
     
 class TailFollower(object):
-    """ Imitation of tail -F, because actual tail -F seems to give up in some cases, which we can't control.  
+    """ Imitation of tail -F on multiple files
+        The actual tail -F seems to give up in some cases, which we can't control.  
         Could stand some further testing.
     """
     def __init__(self, print_callback):
