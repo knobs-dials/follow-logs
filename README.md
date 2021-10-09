@@ -1,5 +1,5 @@
 "Just show me all relevant logs" in fewer keystrokes.
-- Reads from file logs and systemd
+- Reads from file logs and journalctl
 - allows filtering of which filenames and unit names to include/exclude, by substrings
 - Picks up new matching logs as they appear
 - unifies output format, with colors
