@@ -593,7 +593,11 @@ def true_colf(s, r,g,b):
      return _add_color_if_supported(s,RGBCOL)
  
 def hash_color(s, rgb=False, append=RESET):
-    ' return string wrapped in a (non-black basic shell) color (and RESET after) based on the string '
+    ''' return string wrapped in a (non-black basic shell) color (and RESET after) based on the string
+
+        If rgb==False, uses the basic set of ~8 colors and brightness.
+        If rgb==True,  uses true color
+    '''
     import hashlib
     m = hashlib.sha256()
     m.update(s.encode('u8'))
