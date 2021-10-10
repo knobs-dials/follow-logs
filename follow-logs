@@ -486,6 +486,7 @@ class Rescanner(object):
         """ Scans for logs with the configuration as listed in the obeject.
             Returns matching filenames.
         """
+        
         if self.verbose >= 2:
             if self.recency_minutes:
                 print( "Finding recently used files that look like logs..." )
@@ -498,6 +499,7 @@ class Rescanner(object):
             scan_dirs.append( os.path.expanduser('~') )
         
         sawfiles_num = 0
+        nopermission_num = 0
         for scan_dir in self.scan_dirs:
             if self.verbose >= 2:
                 print( "\n ...in %s"%scan_dir )
@@ -532,7 +534,7 @@ class Rescanner(object):
                                 if self.verbose >= 2:
                                     print( "%60r  Matches nots"%fullpath)
                                 continue
-
+                            
                         if path_indicates_possible_log( fullpath ) == False:
                             if self.verbose >= 2:
                                 print( "%60r  Filename doesn't look like log"%fullpath )
@@ -547,17 +549,23 @@ class Rescanner(object):
                                     print( "%60r  Not recent"%fullpath )
                                 continue
 
-                        likely_log = is_nonbinary(fullpath, amt=400)
-                        if not likely_log:
-                            if self.verbose >= 2:
-                                print( "%60r  Contents do not look like log"%fullpath )
-                        else:
-                            if self.verbose >= 2:
-                                print( "%60r  Looks good"%fullpath )
-                            justnow_filenames.append(fullpath)
+                        try:
+                            likely_log = is_nonbinary(fullpath, amt=400)
+                            if not likely_log:
+                                if self.verbose >= 2:
+                                    print( "%60r  Contents do not look like log"%fullpath )
+                            else:
+                                if self.verbose >= 2:
+                                    print( "%60r  Looks good"%fullpath )
+                                justnow_filenames.append(fullpath)
+                        except PermissionError: # quick hack to make it work, will address properly later
+                            nopermission_num += 1
                                 
                 #if self.verbose:
                 #    print("scanned %d files for logness"%sawfiles_num)
+                #    if nopermission_num>0:
+                #        print("no access to %d files"%nopermission_num)
+                # TODO: give 'no permission to some files' error *once*
                                 
             except Exception as exception:
                 #if self.verbose:
