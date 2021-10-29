@@ -55,7 +55,7 @@ optional arguments:
 
 
 ## TODO:
-- test the tail thing for weird edge cases
+- test our own file follower for weird edge cases
 
 - think of what systemd non-units to potentially show (e.g. .scope for login sessions may be nice to see)
 
