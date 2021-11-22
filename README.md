@@ -49,7 +49,7 @@ optional arguments:
 ```
 
 ## Notes:
-- will work without helpers_shellcolor.py, but coloring the source names is nice for visual parsing
+- will work without helpers_shellcolor.py, but coloring the source names is handy for you to visually distinguish between log sources
 
 - has its own imitation of `tail -F`, because the tail command didn't seem to deal with logrotate yoinking the file for more than a second or two
 
