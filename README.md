@@ -1,5 +1,5 @@
 "Just show me all relevant logs" in fewer keystrokes.
-- Reads from file logs and journalctl
+- Reads from file logs, and via systemd's journalctl
 - allows filtering of which filenames and unit names, to include or exclude, by substrings
 - Picks up new matching logs as they appear
 - unifies output format, with colors
@@ -49,13 +49,13 @@ optional arguments:
 ```
 
 ## Notes:
-- will work without helpers_shellcolor.py, but coloring the source names is nice for visual parsing
+- will work without helpers_shellcolor.py, but coloring the source names is handy for you to visually distinguish between log sources
 
 - has its own imitation of `tail -F`, because the tail command didn't seem to deal with logrotate yoinking the file for more than a second or two
 
 
 ## TODO:
-- test the tail thing for weird edge cases
+- test our own file follower for weird edge cases
 
 - think of what systemd non-units to potentially show (e.g. .scope for login sessions may be nice to see)
 
