@@ -365,8 +365,6 @@ class Rescanner(object):
             If onlys isn't None or [], it is used as a whitelist of substrings that have to appear somewhere in the path.
             This lets you easily filter for some specific named logs (or directories)
         """
-       
-
         def print_message(source, message):
             " Unify printing style. "
             # CONSIDER: detecting and doing 256 colors when we can
@@ -398,7 +396,7 @@ class Rescanner(object):
         # members of main class, so that the scopey references are a little ugly
         self.tf = TailFollower(     print_message )
         self.tf.start_thread( )
-        self.jr = JournalctlReader( print_message, add_time=True )
+        self.jr = JournalctlReader( print_message, add_time=add_time )
         self.jr.start_thread( )
          
         self.verbose = verbose
@@ -651,7 +649,7 @@ if __name__=='__main__':
             try:
                 ret_sec = float(v) # see if it's unitless, interpret as seconds
             except:
-                raise ValueError("don't understand value %r"%unit)
+                raise ValueError("don't understand %r"%things)
         for num,unit in things:
             n = float(num)
             if unit[0]=='w':
@@ -676,8 +674,8 @@ if __name__=='__main__':
                                 help="if specified, matches only names with one of these substrings (comma separated)")
         parser.add_argument('-n',"--nots",                action="store",       default=None,
                                 help="if specified, everything except names with one of these substrings (comma separated)")
-        parser.add_argument("-T", "--no-journalctl-time", action="store_false",  default=True,
-                                help="by default we add the time field to journalctil lines. Specify this to turn that off.")
+        parser.add_argument("-T", "--no-journalctl-time", action="store_false",  default=True,   dest='journalctl_time',
+                                help="by default we add the time field to journalctl lines. Specify this to turn that off.")
                                 # CONSIDER: parameter to format that time
         parser.add_argument("--recency",                  action="store",       default="1d",
                                 help="ignore logs with mtime/ctime older than this, defaults to 1d")
@@ -728,6 +726,7 @@ if __name__=='__main__':
                        grepout            = args.grep_out,
                        verbose            = args.verbose,
                        truecolor          = args.true_color,
+                       add_time           = args.journalctl_time,
         )
         
         print( "Looking for logs..." )
