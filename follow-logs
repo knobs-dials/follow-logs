@@ -117,9 +117,9 @@ class TailFollower(object):
     
 class JournalctlReader(object):
     " runs journalctl on given units "
-    def __init__(self, print_callback, add_time=False):
+    def __init__(self, print_callback, show_time=False):
         ''' print_callback should take two strings, source and message '''
-        self.add_time = add_time
+        self.show_time = show_time
         self.pid = None
         self.proc = None
         self.print_callback = print_callback
@@ -209,7 +209,7 @@ class JournalctlReader(object):
                     #print( d ) # figuring out the fields
                     sourcename = transport
 
-                if self.add_time:
+                if self.show_time:
                     tve = d.get('_SOURCE_REALTIME_TIMESTAMP') # TODO: figure out which of the timestamps is most useful
                     if tve!=None: # fall back to printing the current time. Not ideal in terms of monotonicity, but more helpful than nothing. Put on parameter?
                         msg = datetime.datetime.fromtimestamp( float(tve)/1000000 ).strftime('%b %-d %H:%M:%S') + '  ' + msg
@@ -355,7 +355,7 @@ class Rescanner(object):
                  check_interval_sec = 20,
                  nomatch_rescan_interval_sec = 5,
                  verbose = False,
-                 add_time = True,
+                 show_time = True,
                  truecolor = False,
                  ):
         """ Constructor takes most settings.
@@ -367,8 +367,7 @@ class Rescanner(object):
         """
         def print_message(source, message):
             " Unify printing style. "
-            # CONSIDER: detecting and doing 256 colors when we can
-            # CONSIDER: I didn't I have a function for this?
+            # CONSIDER: detecting and doing 256 colors when we can - didn't I have a function for this?
 
             if grep!=None: # CONSIDER comma separated?
                 if grep not in message:
@@ -376,12 +375,27 @@ class Rescanner(object):
             elif grepout!=None:
                 if grep in message:
                     return                
-            
+
+            if not show_time:
+                # Try to take dates out of messages. 
+                #   may remove too much if generic, so I'm removing formats as I see them. 
+                #   this will probably leave too many things in (because "works on my system"), particularly in other locales.
+                # CONSIDER: better ways of doing this, e.g. compiling patterns based on locale settings
+                # 'Dec 24 17:55:44'
+                message = re.sub(r'^([A-Za-z]{3,4}\s[0-9]{1,2}\s[0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\s{0,2})','', message)
+                # '2021/12/24 17:55:15' and '2021/12/24-17:55:15'
+                message = re.sub(r'^([0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9][\s-][0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\s{0,2})','', message)
+                # '[2021-12-24  18:03:01]'
+                message = re.sub(r'^(\[[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\s+[0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\]\s{0,2})','', message)
+                # '[Fri Dec 24 18:08:03.356792 2021]'
+                message = re.sub(r'^(\[[A-Za-z]{3,4}\s[A-Za-z]{3,4}\s[0-9]{1,2}\s[0-9]{1,2}:[0-9][0-9]:[0-9][0-9](?:[.][0-9]+)\s[0-9][0-9][0-9][0-9]\]\s{0,2})','', message)
+
             alisource = '%25s'%source
             if sc==None: # we specified --no-color, or that color helper wasn't there
                 sys.stdout.write( alisource  )
             else:
                 if truecolor:
+                    # TODO: we can currently pick near-block colors that don't show up when converted to 8-color by the likes of tmux. avoid that.
                     sys.stdout.write( sc.hash_color( alisource, rgb=True ) )
                 else: # basic ~8 colors plus some bright variants (or none if the helper detected no color support)
                     color_funcs = [ sc.blue, sc.red, sc.green, sc.cyan, sc.magenta, sc.yellow, sc.brightblue, sc.brightred, sc.brightcyan, sc.brightmagenta, sc.brightyellow, sc.brightgreen ]
@@ -396,7 +410,7 @@ class Rescanner(object):
         # members of main class, so that the scopey references are a little ugly
         self.tf = TailFollower(     print_message )
         self.tf.start_thread( )
-        self.jr = JournalctlReader( print_message, add_time=add_time )
+        self.jr = JournalctlReader( print_message, show_time=show_time )
         self.jr.start_thread( )
          
         self.verbose = verbose
@@ -674,8 +688,8 @@ if __name__=='__main__':
                                 help="if specified, matches only names with one of these substrings (comma separated)")
         parser.add_argument('-n',"--nots",                action="store",       default=None,
                                 help="if specified, everything except names with one of these substrings (comma separated)")
-        parser.add_argument("-T", "--no-journalctl-time", action="store_false",  default=True,   dest='journalctl_time',
-                                help="by default we add the time field to journalctl lines. Specify this to turn that off.")
+        parser.add_argument("-T", "--no-time", action="store_false",  default=True,   dest='show_time',
+                                help="by default we add the time field to journalctl lines. Specify this to turn that off. We also try to remove date-n-time from the start of messages, but no promises")
                                 # CONSIDER: parameter to format that time
         parser.add_argument("--recency",                  action="store",       default="1d",
                                 help="ignore logs with mtime/ctime older than this, defaults to 1d")
@@ -726,7 +740,7 @@ if __name__=='__main__':
                        grepout            = args.grep_out,
                        verbose            = args.verbose,
                        truecolor          = args.true_color,
-                       add_time           = args.journalctl_time,
+                       show_time          = args.show_time,
         )
         
         print( "Looking for logs..." )
