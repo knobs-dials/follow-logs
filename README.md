@@ -7,7 +7,7 @@
 
 ## EXAMPLE
 
-Positive filter ('only'): `-o error,local` goes a long way to show only apache errors and webapp debug I output to LOCAL0 (syslog facility).
+Positive filter ('only'): `-o error,local` goes a long way to show only apache errors and webapp debug I output to LOCAL0 (a syslog facility).
 
 Negative filter ('not') : `-n access` goes a long way to show everything except apache access logs:
 ![colored logs](/screenshots/somelogs.png?raw=true)
