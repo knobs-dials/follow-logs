@@ -14,7 +14,7 @@ Negative filter ('not') : `-n access` goes a long way to show everything except 
 
 Where
   - systemd is indicated with square brackets, files without  
-  - logs are consistent ly colored, by name, making it easier to skim the output
+  - logs are consistently colored, by name, making it easier to skim the output
 
 
 ## Arguments
