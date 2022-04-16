@@ -4,7 +4,7 @@
 - Picks up new matching logs as they appear
 - unifies output format
 
-Also colors logs by source, for skimmability
+Also colors logs by source, for ease of skimming
 
 
 ## EXAMPLE
