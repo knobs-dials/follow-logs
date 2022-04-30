@@ -25,23 +25,30 @@ Where
 
 ## Arguments
 ```
-usage: follow-logs [-h] [-o ONLYS] [-n NOTS] [-T] [--recency RECENCY]
-                   [--check-interval CHECK_INTERVAL] [--scandirs SCANDIRS]
-                   [--home] [-g GREP] [-G GREP_OUT] [-C] [-t] [-v]
+usage: follow-logs [-h] [--recency RECENCY] [-o ONLYS] [-n NOTS] [-T] [-J]
+                   [-F] [-D] [-S] [--check-interval CHECK_INTERVAL]
+                   [--scandirs SCANDIRS] [--home] [-g GREP] [-G GREPOUT] [-C]
+                   [-t] [-v]
 
 optional arguments:
   -h, --help            show this help message and exit
+  --recency RECENCY     exclude logs with mtime/ctime older than this,
+                        defaults to 1d
   -o ONLYS, --onlys ONLYS
                         if specified, matches only names with one of these
                         substrings (comma separated)
-  -n NOTS, --nots NOTS  if specified, everything except names with one of
-                        these substrings (comma separated)
+  -n NOTS, --nots NOTS  if specified, exclude names with one of these
+                        substrings (comma separated). Will apply after
+                        --recency and --only, if specified.
   -T, --no-time         by default we add the time field to journalctl lines.
-                        Specify this to turn that off. We also try to remove
-                        date-n-time from the start of messages, but no
-                        promises
-  --recency RECENCY     ignore logs with mtime/ctime older than this, defaults
-                        to 1d
+                        Specify this to turn that off. Also try to remove
+                        date-n-time from the start of messages (no promises
+                        there)
+  -J, --no-journalctl   Don't watch systemd units
+  -F, --no-files        Don't watch for file logs
+  -D, --no-docker       Don't watch for docker logs
+  -S, --strip-more      Try to strip more uninformative things from the
+                        message, like the hostname
   --check-interval CHECK_INTERVAL
                         check for log source changes every this often,
                         defaults to 30s
@@ -50,13 +57,13 @@ optional arguments:
   --home                look for log-ish text files in homedir, defaults off
                         since it's slow and may turn up crud.
   -g GREP, --grep GREP  only print messages containing substring
-  -G GREP_OUT, --grep-out GREP_OUT
+  -G GREPOUT, --grep-out GREPOUT
                         don't print messages containing substring
-  -C, --no-color        no coloring, even when context seems to support it.
+  -C, --no-color        don't use color escapes, even when context seems to
+                        support it.
   -t, --true-color      use true-color escapes, for more colors when you know
-                        it's supported
-  -v, --verbose         debug verbosity (0, 1, 2)
-
+                        it's supported.
+  -v, --verbose         debug verbosity (repeat for debug)
 ```
 
 ## Notes:
