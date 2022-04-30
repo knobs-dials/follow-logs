@@ -295,6 +295,8 @@ class TailFollower_Rescanner(object):
         nopermission_num = 0
         for scan_dir in self.scan_dirs:
             try:
+                if not os.path.exists(scan_dir):
+                    continue
                 # this indexing also does most filtering
                 for curdir, _, files in os.walk( os.path.abspath(scan_dir) ):
                     for filename in files:
@@ -413,42 +415,43 @@ class DockerLogFollower_Rescanner(object):
         justnow_filenames = []
 
         for look_under in self.docker_dirs:
-            for container_id in os.listdir( look_under ):
-                if len(container_id) != 64:
-                    continue
-                
-                log_filename = os.path.join(look_under, container_id, '%s-json.log'%container_id )
-
-                if self.recency_minutes:
-                    if not file_is_recent(log_filename, recency_minutes=self.recency_minutes):
-                        #if self.verbose >= 2:
-                        print( "%60r  Not recent"%log_filename )
+            if os.path.exists(look_under): # and test for dir?
+                for container_id in os.listdir( look_under ):
+                    if len(container_id) != 64:
                         continue
+                    
+                    log_filename = os.path.join(look_under, container_id, '%s-json.log'%container_id )
 
-                container_name = container_id[:12]
-                with open(os.path.join(look_under, container_id, 'config.v2.json') ) as file:
-                    docker_config = json.loads( file.read() )
-                    if 'Name' in docker_config:
-                        container_name = docker_config['Name']
-                        image_name = docker_config['Config']['Image']
+                    if self.recency_minutes:
+                        if not file_is_recent(log_filename, recency_minutes=self.recency_minutes):
+                            #if self.verbose >= 2:
+                            print( "%60r  Not recent"%log_filename )
+                            continue
 
-                        test_name = container_name + ' ' + image_name
-                        if self.onlys!=None and len(self.onlys)>0: # onlys was specified, filter according to it
-                            if not test_substr( test_name, self.onlys):
-                                if self.verbose>=2:
-                                    print( "SKIP: %60r  Doesn't match onlys (%r)"%(test_name,self.onlys) )
-                                continue
+                    container_name = container_id[:12]
+                    with open(os.path.join(look_under, container_id, 'config.v2.json') ) as file:
+                        docker_config = json.loads( file.read() )
+                        if 'Name' in docker_config:
+                            container_name = docker_config['Name']
+                            image_name = docker_config['Config']['Image']
 
-                        if self.nots!=None and len(self.nots)>0: # nots was specified, filter according to it
-                            if test_substr( test_name, self.nots):
-                                if self.verbose>=2:
-                                    print( "SKIP: %60r  Matches nots (%r)"%(test_name,self.nots) )
-                                continue
+                            test_name = container_name + ' ' + image_name
+                            if self.onlys!=None and len(self.onlys)>0: # onlys was specified, filter according to it
+                                if not test_substr( test_name, self.onlys):
+                                    if self.verbose>=2:
+                                        print( "SKIP: %60r  Doesn't match onlys (%r)"%(test_name,self.onlys) )
+                                    continue
+
+                            if self.nots!=None and len(self.nots)>0: # nots was specified, filter according to it
+                                if test_substr( test_name, self.nots):
+                                    if self.verbose>=2:
+                                        print( "SKIP: %60r  Matches nots (%r)"%(test_name,self.nots) )
+                                    continue
 
 
-                        self.dockerfollower.containerid_name[container_id] = container_name # hackish
+                            self.dockerfollower.containerid_name[container_id] = container_name # hackish
 
-                justnow_filenames.append( log_filename )
+                    justnow_filenames.append( log_filename )
 
         new_files = set(justnow_filenames).difference( self.docker_log_filenames )
         self.docker_log_filenames = justnow_filenames
@@ -485,7 +488,6 @@ class JournalctlReader(object):
         for unit in units:
             cmd.extend( ['-u', unit] )
         self.proc = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE)
-
         
     def show_new_messages(self):
         ''' One cycle of dealing with new messages.
@@ -580,12 +582,12 @@ class JournalctlReader_Rescanner(object):
         self.verbose = verbose
         #
         self.log_units = []
-        # # look up absolute path of systemctl, also to determine whether there's a systemd at all
-        # proc = subprocess.Popen(['/usr/bin/which', 'systemctl'], stdout=subprocess.PIPE )
-        # out1, _ = proc.communicate()
-        # self._systemctl_path = out1.strip()
-        # self.is_systemd = (len(self._systemctl_path.strip()) > 0)
-        # self.log_units  = []
+
+        # look up absolute path of systemctl, also to determine whether there's a systemd at all
+        proc = subprocess.Popen(['/usr/bin/which', 'systemctl'], stdout=subprocess.PIPE )
+        out1, _ = proc.communicate()
+        self._systemctl_path = out1.strip()
+        self.is_systemd = (len(self._systemctl_path.strip()) > 0)
 
 
     def journalctl_list(self, striptype=False):
@@ -632,6 +634,8 @@ class JournalctlReader_Rescanner(object):
 
     def rescan(self):
         """ Fetch list of matching unit names via journalctl_list(). """
+        if not self.is_systemd:
+            return
         units_now = self.journalctl_list()
         new_units = set(units_now).difference( self.log_units )
         self.log_units = units_now
@@ -732,13 +736,12 @@ if __name__=='__main__':
             sys.stdout.write( message.rstrip() )
             sys.stdout.write( '\n')
             sys.stdout.flush()
-        
        
 
         ### Main ########################################
         # Note: it's slightly easier to still instantiate them but then never use them based on do_* variables         
         tf           = TailFollower(                print_message )
-        tf_rescanner = TailFollower_Rescanner(      tf, scan_dirs=['/var/log'], onlys=onlys, nots=nots, recency_minutes=recency_minutes, verbose=args.verbose )
+        tf_rescanner = TailFollower_Rescanner(      tf, scan_dirs=['/var/log/'], onlys=onlys, nots=nots, recency_minutes=recency_minutes, verbose=args.verbose )
 
         df           = DockerLogFollower(           print_message )
         df_rescanner = DockerLogFollower_Rescanner( df, docker_dirs=['/var/lib/docker/containers/'], onlys=onlys, nots=nots, recency_minutes=recency_minutes, verbose=args.verbose )
@@ -749,26 +752,23 @@ if __name__=='__main__':
 
         def background_rescanner_thread():
             while True:
-                if args.do_files:
-                    if args.verbose >= 2:
-                        print( "Rescanning file logs" )
-                    tf_rescanner.rescan()
-                    
-                if args.do_docker:
-                    if args.verbose >= 2:
-                        print( "Rescanning docker logs" )
-                    df_rescanner.rescan()
-                
                 if args.do_journalctl:
                     if args.verbose >= 2:
                         print( "Rescanning journald units" )
                     jr_rescanner.rescan()
+                                        
+                if args.do_files:
+                    if args.verbose >= 2:
+                        print( "Rescanning file logs" )
+                    tf_rescanner.rescan()
 
-                # TODO: work in "changed to watch %d logs" messages
+                if args.do_docker:
+                    if args.verbose >= 2:
+                        print( "Rescanning docker logs" )
+                    df_rescanner.rescan()
 
-                # TODO: work in "if there are 0 matching logs" logic again
                 if len( tf_rescanner.log_filenames )==0 and len( df_rescanner.docker_log_filenames )==0 and len(jr_rescanner.log_units)==0:
-                    print("NOTE: There are 0 logs that match")
+                    print("NOTE: There are 0 logs that match, you probably have a very restrictive filter.")
                 time.sleep( check_interval )
 
         bg = threading.Thread( target=background_rescanner_thread )
