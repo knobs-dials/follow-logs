@@ -70,7 +70,6 @@ def file_is_recent(filename, recency_minutes=60):
         return True
     return False
 
-
 def file_is_nonbinary(filename=None, data=None, byte_amt=200):
     """ Given either a filename or some data from it, returns whether this is probably text, rather than binary data.
         amt: controls how much of data we use, or how much to read from the filename to be opened
@@ -126,7 +125,7 @@ class TailFollower(object):
 
         Could stand some further testing.
     """
-    def __init__(self, print_callback, line_parser=None, source_format='%s'):
+    def __init__(self, print_callback, line_parser=None, source_format=None):
         ''' print_callback should take two strings, source and message 
 
             if line_parser !=None, we print line_parser(message)
@@ -155,7 +154,8 @@ class TailFollower(object):
     #        del self.data[filename]
         
     def per_file_work(self):
-        ''' You probably want to call this on a regular, shortish interval.
+        ''' Does all the necessary work on the set of files we are currently following.
+            You probably want to call this on a regular, shortish (<1sec) interval.
         
             One cycle of 
             - checking whether path disappeared - 
@@ -215,7 +215,11 @@ class TailFollower(object):
                         for line in fob.readlines():
                             if self.line_parser:
                                 line = self.line_parser( line )
-                            self.print_callback( self.source_format%os.path.basename(filename), line )
+                            source = os.path.basename(filename)
+                            if self.source_format:
+                                #print("source_format(%s)"%source)
+                                source = self.source_format( source )
+                            self.print_callback( source , line )
 
                 # TODO: figure out all possible exceptions             
                 # perhaps the most important if the file disappears _after_ the exists() check, things like the tell() and read() will fail instead, 
@@ -226,14 +230,22 @@ class TailFollower(object):
                     pass # if so we can ignore that, we can print these lines next iteration
                 # TODO: tests for these cases more specifically, right now this is probably too catch-all
 
+    #def rescan(self, under_path):
+    #    ''' Scan files under a directory 
+    #        Returns (how many logs, whether we changed this round)
+    #    '''
+    #    pass
+        
+
 
 
 class DockerLogFollower(TailFollower):
     ''' Inherits from TailFollower because it only really differs on two points 
     
         Is 90% just TailFollower, because the only thing that really differs is 
-        - how to parse lines (JSONL)
-        - how to notice new files (which is currently external)
+        - how to parse lines (JSONL style)
+        - how to notice new files
+        - how to figure out the source name to show
     '''
 
     def __init__(self, print_callback):
@@ -247,8 +259,19 @@ class DockerLogFollower(TailFollower):
                 print( "Failed to parse %r as JSON"%line )
             return line
 
-        TailFollower.__init__(self, print_callback=print_callback, line_parser=line_parser, source_format='{%s}')
+        def docker_source_format(source):
+            source=source[:64] # hacky
+            if source in self.containerid_name:
+                source = self.containerid_name[source].lstrip('/')
+            return '{%s}'%source
 
+        TailFollower.__init__(self, print_callback=print_callback, line_parser=line_parser, source_format=docker_source_format)
+
+        self.containerid_name = {}
+
+
+    #def rescan(self):
+    #    pass
 
     
 class JournalctlReader(object):
@@ -284,8 +307,7 @@ class JournalctlReader(object):
         
     def per_unit_work(self):
         ''' One cycle of dealing with new messages.
-
-            You probably want to call this on a regular, short interval.        
+            You probably want to call this on a regular, short (<1sec) interval.        
         '''
         if self.proc != None:
             line = self.proc.stdout.readline()   # becaues this blocks, the loop delay in thread can be tiny
@@ -365,6 +387,12 @@ class JournalctlReader(object):
                 print( e )
                 pass
 
+    #def rescan(self, under_path):
+    #    ''' Scan files under a directory 
+    #        Returns (how many logs, whether we changed this round)
+    #    '''
+    #    pass
+
 
 
 class Rescanner(object):
@@ -442,8 +470,10 @@ class Rescanner(object):
                 message = re.sub(r'^(\[[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\s+[0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\]\s{0,2})','', message)
                 # '[Fri Dec 24 18:08:03.356792 2021]'
                 message = re.sub(r'^(\[[A-Za-z]{3,4}\s[A-Za-z]{3,4}\s[0-9]{1,2}\s[0-9]{1,2}:[0-9][0-9]:[0-9][0-9](?:[.][0-9]+)\s[0-9][0-9][0-9][0-9]\]\s{0,2})','', message)
-                # '2022-01-29T23:25:42.778+0100'  # which is a slight break from ISO8601
-                message = re.sub(r'^([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]([.][0-9]{1,3})?[+-][0-9][0-9]:?[0-9][0-9])','', message)
+                # '2022-01-29T23:25:42.778+0100' ISO8601 and some technically-non-conforming variants
+                message = re.sub(r'^([\[]?[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]([.][0-9]{1,9})?([+-][0-9][0-9]:?[0-9][0-9]|Z)?[\]]?[\s]?)','', message)
+                
+
 
             if strip_more:
                 # strip hostname from start of message (consider it being followed by space, :)
@@ -576,7 +606,6 @@ class Rescanner(object):
                         sys.stdout.write( 'Changing docker tail to listen to %d files\n'%len(self.docker_log_filenames) )
                         sys.stdout.flush()
                         for filename in self.docker_log_filenames: # thigns we already listen to will be ignored
-                            print(filename)
                             self.df.add_filename( filename )
 
                     if self.saw_new_filenames:
@@ -712,12 +741,15 @@ class Rescanner(object):
                 
                 logname = os.path.join(look_under, container_id, '%s-json.log'%container_id )
 
-                #container_name = container_id[:12]
-                #with open(os.path.join(look_under, container_id, 'config.v2.json') ) as file:
-                #    docker_config = json.loads( file.read() )
-                #    if 'Name' in docker_config:
-                #        container_name = docker_config['Name']
-                #        image_name = docker_config['Image']['Name']
+                container_name = container_id[:12]
+                with open(os.path.join(look_under, container_id, 'config.v2.json') ) as file:
+                    docker_config = json.loads( file.read() )
+                    if 'Name' in docker_config:
+                        container_name = docker_config['Name']
+                        #image_name = docker_config['Image']['Name']
+
+                        self.df.containerid_name[container_id] = container_name
+
                 #        TODO: use these two for filtering 
                 #print( "%s %s"%(container_name, logname) )
 
