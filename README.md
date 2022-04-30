@@ -1,8 +1,14 @@
 "Just show me all relevant logs" in fewer keystrokes.
-- Reads from file logs, and via systemd's journalctl
-- allows filtering of which filenames and unit names, to include or exclude, by substrings
+- Reads 
+  - from file logs
+  - via systemd's journalctl
+  - from docker's JSON logs
+- allows filtering of which filenames / unit names / container names to include or exclude, by substrings
+  - filtering not yet implemented for docker, it currently follows all
 - Picks up new matching logs as they appear
-- unifies output format, with colors
+- unifies output format
+
+Also colors logs by source, for ease of skimming
 
 
 ## EXAMPLE
@@ -13,8 +19,8 @@ Negative filter ('not') : `-n access` goes a long way to show everything except 
 ![colored logs](/screenshots/somelogs.png?raw=true)
 
 Where
-  - systemd is indicated with square brackets, files without  
-  - logs are consistent ly colored, by name, making it easier to skim the output
+  - systemd is indicated with [square brackets], docker with {curly brackets}, files without  
+  - logs are consistently colored, by name, making it easier to skim the output
 
 
 ## Arguments
