@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import os
+import platform
 import sys
 import time
 import datetime
@@ -17,7 +18,6 @@ except ImportError:
 
 
 #### helpers ###########################################################
-
 
 def path_indicates_possible_log(fullpath):
     """ Filename-based guess of whether this is likely to be a log file.
@@ -146,12 +146,12 @@ class TailFollower(object):
             fob.seek(0,2)        
             self.data[filename] = (fob, ino)
 
-    #def remove_filename(self, filename):
-    #    ' stop following a filename. '
-    #    if filename in self.data:
-    #        fob, ino = self.data[filename]
-    #        fob.close()
-    #        del self.data[filename]
+    def remove_filename(self, filename):
+        ' stop following a filename. Not currently used, actually. '
+        if filename in self.data:
+            fob, ino = self.data[filename]
+            fob.close()
+            del self.data[filename]
         
     def per_file_work(self):
         ''' Does all the necessary work on the set of files we are currently following.
@@ -167,8 +167,8 @@ class TailFollower(object):
             - emitting lines from file we have open - based on when our seek position no longer matches the file's size
                 calls the callback, which in this script is the printer function
        
-            CONSIDER: seprating the stats TODO: separate the file checks from the line checks
-               ...but it's mostly stats on what is usually one or two dozen files, so not overly pricy
+            TODO: separate the file stat()s from the "are there new lines" checks
+               ...though it's mostly stats on what is usually one or two dozen files, so not overly pricy
           '''
         # should deal with
         # - filename disappearing, and later reappearing (os.path.exists False somewhere. inode is not relevant)
@@ -222,46 +222,153 @@ class TailFollower(object):
                             self.print_callback( source , line )
 
                 # TODO: figure out all possible exceptions             
+                # TODO: tests for these cases more specifically, right now this is probably too catch-all
+
                 # perhaps the most important if the file disappears _after_ the exists() check, things like the tell() and read() will fail instead, 
                 except ValueError as ve:  # ...which seems to be reported as a ValueError
                     pass # we can ignore that because we'll get to it later
                 
                 except OSError as oe: # I got "telling position disabled by next() call", which seems to be our own thread's reading temporarily disabling tell (?)
                     pass # if so we can ignore that, we can print these lines next iteration
-                # TODO: tests for these cases more specifically, right now this is probably too catch-all
-
-    #def rescan(self, under_path):
-    #    ''' Scan files under a directory 
-    #        Returns (how many logs, whether we changed this round)
-    #    '''
-    #    pass
         
+class TailFollower_Rescanner(object):
+    ''' Represents a bunch of "how to scan for log files and where" state, and pokes the results into a given TailFollower object.
+        Separate from TailFollower because you might have less entangled use for that class.
+    '''
+    def __init__(self, tailfollower, scan_dirs, onlys=None, nots=None, recency_minutes=60, add_home=False, verbose=False):
+        ''' add_home         - look in current user's home directory
+            recency_minutes  - log needs to be this young to be listed.   0/False/None means don't filter. 
+        '''
+        self.tailfollower    = tailfollower
+        self.scan_dirs       = scan_dirs
+        self.onlys           = onlys
+        self.nots            = nots
+        self.verbose         = verbose
+        self.add_home        = add_home
+        self.recency_minutes = recency_minutes
+        #
+        self.log_filenames = []
+
+
+    def rescan(self):
+        ''' Returns (how many logs, whether we changed this round)
+            Returns list of log filenames from filesystem (via os.walk()s) with the configuration as listed in the object.
+        '''       
+        justnow_filenames = []
+        
+        if self.add_home: # TODO: we may want more restrictions here, e.g. looking only for filenames ending in .log
+            scan_dirs.append( os.path.expanduser('~') )
+        
+        sawfiles_num = 0
+        nopermission_num = 0
+        for scan_dir in self.scan_dirs:
+            if self.verbose >= 2:
+                print( "\n ...in %s"%scan_dir )
+
+            try:
+                # this indexing also does most filtering
+                for curdir, _, files in os.walk( os.path.abspath(scan_dir) ):
+                    for filename in files:
+                        fullpath = os.path.join(curdir,filename)
+                        sawfiles_num += 1
+                        
+                        # only if onlys is specified do we use it as a "only allow things that are in this"
+                        # (so it's white+black, all+black, or neither)
+                        if self.onlys!=None and len(self.onlys)>0:
+                            whitelist_condition = False
+                            for filtstr in self.onlys:
+                                if filtstr in fullpath:
+                                    whitelist_condition = True
+                                    break
+                            if not whitelist_condition:
+                                if self.verbose >= 2:
+                                    print( "%60r  Doesn't match onlys"%fullpath )
+                                continue
+                        
+                        if self.nots!=None and len(self.nots)>0:
+                            blacklist_condition = False
+                            for filtstr in self.nots:
+                                if filtstr in fullpath:
+                                    blacklist_condition=True
+                                    break
+                            if blacklist_condition:
+                                if self.verbose >= 2:
+                                    print( "%60r  Matches nots"%fullpath)
+                                continue
+                            
+                        if path_indicates_possible_log( fullpath ) == False:
+                            if self.verbose >= 2:
+                                print( "%60r  Filename doesn't look like log"%fullpath )
+                            continue
+                            
+                        # above the content guess, below the filename based guess, because of relative cost
+                        # (though mtime test should be almost free because os.walk stats too)
+                        if self.recency_minutes:
+                            if not file_is_recent(fullpath, recency_minutes=self.recency_minutes):
+                                if self.verbose >= 2:
+                                    print( "%60r  Not recent"%fullpath )
+                                continue
+
+                        try:
+                            likely_log = file_is_nonbinary(fullpath, byte_amt=400)
+                            if not likely_log:
+                                if self.verbose >= 2:
+                                    print( "%60r  Contents do not look like log"%fullpath )
+                        except PermissionError: # quick hack to make it work, will address properly later
+                            nopermission_num += 1
+
+                        if self.verbose >= 2:
+                            print( "%60r  Looks good"%fullpath )
+                        justnow_filenames.append(fullpath)
+
+                #if self.verbose:
+                #    print("scanned %d files for logness"%sawfiles_num)
+                #    if nopermission_num>0:
+                #        print("no access to %d files"%nopermission_num)
+                # TODO: give 'no permission to some files' error *once*
+                                
+            except Exception as exception:
+                #if self.verbose:
+                sys.stderr.write( "Error (%s), ignoring..."%str(exception))
+                raise
+
+        if self.verbose >= 2:
+            print( "\nDone, found %d logs (in %d files)"%( len(justnow_filenames), sawfiles_num ) )
+
+        # Check whether we saw new filenames
+        #   we only care about seeing files we had not seen before,
+        #   as tail deals with and mentions disappearance, and now-silent logs are not shown.
+        new_files = set(justnow_filenames).difference( self.log_filenames )
+        self.log_filenames = justnow_filenames
+        if len(new_files) > 0:
+            #if self.verbose >= 1:
+            print("New files, now following %d"%len(self.log_filenames))
+            for filename in new_files:
+                self.tailfollower.add_filename( filename )
 
 
 
 class DockerLogFollower(TailFollower):
-    ''' Inherits from TailFollower because it only really differs on two points 
-    
-        Is 90% just TailFollower, because the only thing that really differs is 
+    ''' Is 90% just TailFollower, because the only thing that really differs is 
         - how to parse lines (JSONL style)
         - how to notice new files
         - how to figure out the source name to show
     '''
-
     def __init__(self, print_callback):
         ''' print_callback should take two strings, source and message '''
 
         def line_parser(line):
             try:
-                jd = json.loads(line)
+                jd = json.loads( line )
                 line = '[%s] %s: %s'%(jd['time'], jd['stream'], jd['log'])
             except:
                 print( "Failed to parse %r as JSON"%line )
             return line
 
         def docker_source_format(source):
-            source=source[:64] # hacky
-            if source in self.containerid_name:
+            source=source[:64] 
+            # hackish cooperation with the rescanner code
+            if source in self.containerid_name: 
                 source = self.containerid_name[source].lstrip('/')
             return '{%s}'%source
 
@@ -269,9 +376,54 @@ class DockerLogFollower(TailFollower):
 
         self.containerid_name = {}
 
+class DockerLogFollower_Rescanner(object):
+    def __init__(self, dockerfollower, docker_dirs, onlys=None, nots=None, recency_minutes=None, verbose=False):
+        self.dockerfollower  = dockerfollower
+        self.docker_dirs     = docker_dirs
+        self.onlys           = onlys
+        self.nots            = nots
+        self.verbose         = verbose
+        self.recency_minutes = recency_minutes
+        #
+        self.docker_log_filenames = []
 
-    #def rescan(self):
-    #    pass
+
+    def rescan(self):
+        ' currently does not filter by anything, TODO: implement that '
+        justnow_filenames = []
+
+        for look_under in self.docker_dirs:
+            for container_id in os.listdir( look_under ):
+                if len(container_id) != 64:
+                    continue
+                
+                log_filename = os.path.join(look_under, container_id, '%s-json.log'%container_id )
+
+                if self.recency_minutes:
+                    if not file_is_recent(log_filename, recency_minutes=self.recency_minutes):
+                        if self.verbose >= 2:
+                            print( "%60r  Not recent"%fullpath )
+                        continue
+
+                container_name = container_id[:12]
+                with open(os.path.join(look_under, container_id, 'config.v2.json') ) as file:
+                    docker_config = json.loads( file.read() )
+                    if 'Name' in docker_config:
+                        container_name = docker_config['Name']
+                        image_name = docker_config['Config']['Image']
+                #        TODO: use these two for filtering 
+                        self.dockerfollower.containerid_name[container_id] = container_name # hackish
+
+                justnow_filenames.append( log_filename )
+
+        new_files = set(justnow_filenames).difference( self.docker_log_filenames )
+        self.docker_log_filenames = justnow_filenames
+        if len(new_files) > 0:
+            #if self.verbose >= 1:
+            print("New docker logs, now following %d"%len(self.docker_log_filenames))
+            for filename in new_files:
+                self.dockerfollower.add_filename( filename )
+
 
     
 class JournalctlReader(object):
@@ -287,27 +439,21 @@ class JournalctlReader(object):
         self.print_callback = print_callback
         # TODO: take recency and turn into   --since "2 hours ago" style thing
         
-        
     def change_units(self, units):
         ' start listening to new given set of units ' 
         if self.pid:
             os.kill( self.pid, signal.SIGKILL )
             self.proc.wait()
-
-        cmd = ['/bin/journalctl',
-            b'-o',b'json',
-            #b'-n',b'10', # show n last entries
-            b'-f'
-        ]
+        cmd = [b'/bin/journalctl', b'-o',b'json', b'-f' ]
         for unit in units:
             cmd.extend( ['-u', unit] )
-        #print( cmd )
         self.proc = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE)
 
         
-    def per_unit_work(self):
+    def show_new_messages(self):
         ''' One cycle of dealing with new messages.
             You probably want to call this on a regular, short (<1sec) interval.        
+            ...but note that this blocks, which means you may want it in a separate thread
         '''
         if self.proc != None:
             line = self.proc.stdout.readline()   # becaues this blocks, the loop delay in thread can be tiny
@@ -387,385 +533,27 @@ class JournalctlReader(object):
                 print( e )
                 pass
 
-    #def rescan(self, under_path):
-    #    ''' Scan files under a directory 
-    #        Returns (how many logs, whether we changed this round)
-    #    '''
-    #    pass
+class JournalctlReader_Rescanner(object):
 
-
-
-class Rescanner(object):
-    ''' This class mainly checks whether TailFollower and JournalctlReader need to chaneg to a new set of things to follow,
-          so is strongly coupled with them. 
-
-        It also contains the output formatting,
-          in the form of a (print) callback it hands to the reader objects at init.
-
-
-        This is really just a Main class
-          I've considered separate FileRescanner, JournalctlRescanner, ... 
-          but we share state and logic so it'd be a relatively false sense of decoupling. 
-          ...except it's very little state and logic sharing, 
-             and it would still be cleaner if this becomes more library-like.
-
-        - creates the read-and-print object for files, and a thread to keep it working
-        - creates the read-and-print object for units, and a thread to keep it working
-        - Infinite loop of:
-        -- check for new files, inform reader
-        -- check for new units, inform reader
-    '''
-    def __init__(self,
-                 scan_dirs = [b'/var/log'],
-                 docker_dirs = ['/var/lib/docker/containers/'],
-                 add_home = False,
-                 onlys = None,
-                 nots = None,
-                 grep:str = None,
-                 grepout = None,
-                 recency_minutes = 24.0*60.,
-                 check_interval_sec = 20,
-                 nomatch_rescan_interval_sec = 5,
-                 verbose = False,
-                 show_time = True,
-                 strip_more = False,
-                 truecolor = False,
-                 ):
-        """ Constructor takes most settings.
-            add_home         - look in current user's home directory
-            recency_minutes  - log needs to be this young to be listed.   0/False/None means don't filter. 
-
-            If onlys isn't None or [], it is used as a whitelist of substrings that have to appear somewhere in the path.
-            This lets you easily filter for some specific named logs (or directories)
-        """
-        import platform
-        hostname_sp = platform.node()+' '
-
-        # becomes the callback function for instances of the reader classes
-        #   local function to take some variables (e.g. truecolor) from object scope
-        def print_message(source, message):
-            " Unify printing style. "
-            # CONSIDER: detecting and doing 256 colors when we can - didn't I have a function for this?
-
-            if grep!=None: # CONSIDER comma separated?
-                if grep not in message:
-                    return
-
-            elif grepout!=None:
-                if grepout in message:
-                    return                
-
-            if not show_time:
-                # Try to remove dates from the start of messages. 
-                #   may remove too much if it were a generic matches, so I'm removing formats as I see them. 
-                #   this will always under-remove (because of "works on my system" logic), and more so in other locales.
-                #   It's better than nothing and I'd rather err on the side of not removing information
-                # CONSIDER: better ways of doing this, e.g. compiling patterns based on locale settings
-
-                # 'Dec 24 17:55:44'
-                message = re.sub(r'^([A-Za-z]{3}\s+[0-9]{1,2}\s[0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\s{0,1})','', message)
-                # '2021/12/24 17:55:15' and '2021/12/24-17:55:15'
-                message = re.sub(r'^([0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9][\s-][0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\s{0,2})','', message)
-                # '[2021-12-24  18:03:01]'
-                message = re.sub(r'^(\[[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\s+[0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\]\s{0,2})','', message)
-                # '[Fri Dec 24 18:08:03.356792 2021]'
-                message = re.sub(r'^(\[[A-Za-z]{3,4}\s[A-Za-z]{3,4}\s[0-9]{1,2}\s[0-9]{1,2}:[0-9][0-9]:[0-9][0-9](?:[.][0-9]+)\s[0-9][0-9][0-9][0-9]\]\s{0,2})','', message)
-                # '2022-01-29T23:25:42.778+0100' ISO8601 and some technically-non-conforming variants
-                message = re.sub(r'^([\[]?[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]([.][0-9]{1,9})?([+-][0-9][0-9]:?[0-9][0-9]|Z)?[\]]?[\s]?)','', message)
-                
-
-
-            if strip_more:
-                # strip hostname from start of message (consider it being followed by space, :)
-                if message.startswith( hostname_sp ): 
-                    message = message[ len(hostname_sp): ].strip()
-
-            align_source = '%25s'%source
-            if sc==None: # we specified --no-color, or that color helper wasn't there
-                sys.stdout.write( align_source )
-            else:
-                if truecolor:
-                    # TODO: we can currently pick near-block colors that don't show up when converted to 8-color by the likes of tmux. avoid that.
-                    sys.stdout.write( sc.hash_color( align_source, rgb=True ) )
-                else: # basic ~8 colors plus some bright variants (or none if the helper detected no color support)
-                    color_funcs = [ sc.blue, sc.red, sc.green, sc.cyan, sc.magenta, sc.yellow, sc.brightblue, sc.brightred, sc.brightcyan, sc.brightmagenta, sc.brightyellow, sc.brightgreen ]
-                    strhash = sum( ord(ch)  for ch in source )
-                    sys.stdout.write( color_funcs[strhash%len(color_funcs)]( align_source ) )
-            sys.stdout.write( ': ')
-            sys.stdout.write( message.rstrip() )
-            sys.stdout.write( '\n')
-            sys.stdout.flush()
-
-        # NOTE: threads are members of this main-like class, so the scopey references are a little ugly
-
+    def __init__(self, journalctlreader, onlys=None, nots=None, verbose=False):
+        self.journalctlreader = journalctlreader
+        self.onlys   = onlys
+        self.nots    = nots
         self.verbose = verbose
-
-        self.onlys = onlys
-        self.nots = nots
-       
-        if check_interval_sec!=None:
-            check_interval_sec = max(1,check_interval_sec) # less than 1 second makes little sense.
-        self.check_interval_sec = check_interval_sec
-        self.nomatch_rescan_interval_sec = nomatch_rescan_interval_sec
-
-        
-        ## File specific ##################################
-        self.add_home = add_home
-        self.log_filenames = []
-        self.saw_new_filenames = False
-        self.scan_dirs = scan_dirs
-        self.recency_minutes = recency_minutes
-
-        self.tf = TailFollower( print_message )
-        # start thread that makes the above object actually do things, by calling per_file_work regularly
-        def tail_thread_func(ob):
-            while True:
-                ob.per_file_work()
-                time.sleep( 1 )
-        thr = threading.Thread(target=tail_thread_func, args=(self.tf,), name='file_follow')
-        thr.daemon = True # basically: don't be the reason Ctrl-C doesn't work
-        thr.start() # we could join it eventually, but don't really need to
+        #
+        self.log_units = []
+        # # look up absolute path of systemctl, also to determine whether there's a systemd at all
+        # proc = subprocess.Popen(['/usr/bin/which', 'systemctl'], stdout=subprocess.PIPE )
+        # out1, _ = proc.communicate()
+        # self._systemctl_path = out1.strip()
+        # self.is_systemd = (len(self._systemctl_path.strip()) > 0)
+        # self.log_units  = []
 
 
-        ## docker log specific ###############################
-        self.docker_dirs = docker_dirs
-        self.docker_log_filenames = []
-        self.saw_new_dockerlogs = False
-        self.df = DockerLogFollower( print_message )
-        def docker_tail_thread_func(ob):
-            while True:
-                ob.per_file_work()
-                time.sleep( 1 )
-        thr = threading.Thread(target=docker_tail_thread_func, args=(self.df,), name='docker_file_follow')
-        thr.daemon = True # basically: don't be the reason Ctrl-C doesn't work
-        thr.start() # we could join it eventually, but don't really need to
-
-
-        ## Systemd specific ##################################
-        # look up absolute path of systemctl, also to determine whether there's a systemd at all
-        proc = subprocess.Popen(['/usr/bin/which', 'systemctl'], stdout=subprocess.PIPE )
-        out1, _ = proc.communicate()
-        self._systemctl_path = out1.strip()
-        self.is_systemd = (len(self._systemctl_path.strip()) > 0)
-        self.saw_new_units = False
-        self.log_units  = []
-
-        if self.is_systemd: 
-            self.jr = JournalctlReader( print_message, show_time=show_time )
-            def journal_thread_func(ob):
-                while True:
-                    ob.per_unit_work()
-                    #time.sleep( self.check_interval_sec ) # readline blocks, so this is fine to omit
-            thr = threading.Thread(target=journal_thread_func, args=(self.jr,), name='journalctl_follow')
-            thr.daemon = True # basically, don't be the reason Ctrl-C doesn't work
-            thr.start()
-         
-
-
-
-    def scan_and_follow(self):
-        """ The main-like function, an infinite loop of:
-            - fetches list of matching filenames.     If different, informs the reader instance
-            - fetches list of matching systemd units. If different, informs the reader instance
-            - wait interval
-        """
-        while True:
-            ## check
-
-            self.rescan_filelogs()     
-            if self.verbose >= 2:
-                print( "\nMatching log files: %r"%self.log_filenames )
-
-            self.rescan_dockerlogs()
-
-            if self.is_systemd:
-                self.rescan_systemdunits()
-                if self.verbose >= 2:
-                    print( "\nMatching systemd units: %r"%self.log_units )
-
-
-
-            if len(self.log_filenames)==0 and len(self.log_units)==0: 
-                # Inform user because that usually means a mistyped / overly strict filter
-                #   can also mean all matching logs were removed. In either case, we keep rescanning
-                print( "Zero matching logs, waiting until some do" )
-            else:
-                if self.saw_new_filenames==False and self.saw_new_dockerlogs==False and self.saw_new_units==False: # ...but nothing changed. Do nothing.
-                    if self.verbose >= 1:
-                        print( "\nNo changes in matching logs" )
-                    # note: will skip both blocks below and do only the interval sleep
-                else:
-                    if self.saw_new_units:
-                        #if self.verbose >= 1:
-                        sys.stdout.write( 'Changing journalctl to listen to %d units\n'%len(self.log_units) )
-                        sys.stdout.flush()
-                        self.jr.change_units( self.log_units )
-
-                    if self.saw_new_dockerlogs:
-                        #if self.verbose >= 1:
-                        sys.stdout.write( 'Changing docker tail to listen to %d files\n'%len(self.docker_log_filenames) )
-                        sys.stdout.flush()
-                        for filename in self.docker_log_filenames: # thigns we already listen to will be ignored
-                            self.df.add_filename( filename )
-
-                    if self.saw_new_filenames:
-                        #if self.verbose >= 1:
-                        sys.stdout.write( 'Changing tail to listen to %d files\n'%len(self.log_filenames) )
-                        sys.stdout.flush()
-                        for filename in self.log_filenames: # thigns we already listen to will be ignored
-                            self.tf.add_filename( filename )
-            
-            ### 
-            if self.verbose >= 2:
-                print( "Sleeping %.1f"%self.check_interval_sec )
-            time.sleep( self.check_interval_sec )
-
-
-
-
-    ## File specific ##################################
-    def rescan_filelogs(self):
-        """ Returns list of log filenames from filesystem (via os.walk()s) with the configuration as listed in the object.
-        """       
-        if self.verbose >= 2:
-            if self.recency_minutes:
-                print( "Finding recently used files that look like logs..." )
-            else:
-                print( "Finding files that look like logs..." )
-            
-        justnow_filenames = []
-        
-        if self.add_home: # TODO: we may want more restrictions here, e.g. looking only for filenames ending in .log
-            scan_dirs.append( os.path.expanduser('~') )
-        
-        sawfiles_num = 0
-        nopermission_num = 0
-        for scan_dir in self.scan_dirs:
-            if self.verbose >= 2:
-                print( "\n ...in %s"%scan_dir )
-
-            try:
-                # this indexing also does most filtering
-                for curdir, _, files in os.walk( os.path.abspath(scan_dir) ):
-                    for filename in files:
-                        fullpath = os.path.join(curdir,filename)
-                        sawfiles_num += 1
-                        
-                        # only if onlys is specified do we use it as a "only allow things that are in this"
-                        # (so it's white+black, all+black, or neither)
-                        if self.onlys!=None and len(self.onlys)>0:
-                            whitelist_condition = False
-                            for filtstr in self.onlys:
-                                if filtstr in fullpath:
-                                    whitelist_condition = True
-                                    break
-                            if not whitelist_condition:
-                                if self.verbose >= 2:
-                                    print( "%60r  Doesn't match onlys"%fullpath )
-                                continue
-                        
-                        if self.nots!=None and len(self.nots)>0:
-                            blacklist_condition = False
-                            for filtstr in self.nots:
-                                if filtstr in fullpath:
-                                    blacklist_condition=True
-                                    break
-                            if blacklist_condition:
-                                if self.verbose >= 2:
-                                    print( "%60r  Matches nots"%fullpath)
-                                continue
-                            
-                        if path_indicates_possible_log( fullpath ) == False:
-                            if self.verbose >= 2:
-                                print( "%60r  Filename doesn't look like log"%fullpath )
-                            continue
-                            
-                        # above the content guess, below the filename based guess, because of relative cost
-                        # (though mtime test should be almost free because os.walk stats too)
-                        if self.recency_minutes:
-                            if not file_is_recent(fullpath, recency_minutes=recency_minutes):
-                                if self.verbose >= 2:
-                                    print( "%60r  Not recent"%fullpath )
-                                continue
-
-                        try:
-                            likely_log = file_is_nonbinary(fullpath, byte_amt=400)
-                            if not likely_log:
-                                if self.verbose >= 2:
-                                    print( "%60r  Contents do not look like log"%fullpath )
-                        except PermissionError: # quick hack to make it work, will address properly later
-                            nopermission_num += 1
-
-                        if self.verbose >= 2:
-                            print( "%60r  Looks good"%fullpath )
-                        justnow_filenames.append(fullpath)
-
-                #if self.verbose:
-                #    print("scanned %d files for logness"%sawfiles_num)
-                #    if nopermission_num>0:
-                #        print("no access to %d files"%nopermission_num)
-                # TODO: give 'no permission to some files' error *once*
-                                
-            except Exception as exception:
-                #if self.verbose:
-                sys.stderr.write( "Error (%s), ignoring..."%str(exception))
-                raise
-
-        if self.verbose >= 2:
-            print( "\nDone, found %d logs (in %d files)"%( len(justnow_filenames), sawfiles_num ) )
-
-        # Check whether we saw new filenames
-        #   we only care about seeing files we had not seen before,
-        #   as tail deals with and mentions disappearance, and now-silent logs are not shown.
-        new_files = set(justnow_filenames).difference( self.log_filenames )
-        if len(new_files)==0:
-            self.saw_new_filenames = False
-        else:
-            self.saw_new_filenames = True                        
-            if self.verbose >= 1:
-                print( "NEWLY MATCHING FILES:   %s"% ', '.join(new_files) )
-        self.log_filenames = justnow_filenames
-
-
-    ## docker log specific ###############################
-
-    def rescan_dockerlogs(self):
-        ' currently does not filter by anything, b'
-
-        justnow_filenames = []
-
-        for look_under in self.docker_dirs:
-            for container_id in os.listdir( look_under ):
-                if len(container_id) != 64:
-                    continue
-                
-                logname = os.path.join(look_under, container_id, '%s-json.log'%container_id )
-
-                container_name = container_id[:12]
-                with open(os.path.join(look_under, container_id, 'config.v2.json') ) as file:
-                    docker_config = json.loads( file.read() )
-                    if 'Name' in docker_config:
-                        container_name = docker_config['Name']
-                        #image_name = docker_config['Image']['Name']
-
-                        self.df.containerid_name[container_id] = container_name
-
-                #        TODO: use these two for filtering 
-                #print( "%s %s"%(container_name, logname) )
-
-                justnow_filenames.append( logname )
-
-        new_files = set(justnow_filenames).difference( self.docker_log_filenames )
-        self.saw_new_dockerlogs = len(new_files) > 0
-        self.docker_log_filenames = justnow_filenames
-
-
-
-    ## Systemd specific ##################################
-        
     def journalctl_list(self, striptype=False):
         """ Helper for rescan_systemdunits():  call journalctl list-units, filter unit names.   """
-        proc = subprocess.Popen([self._systemctl_path, b'list-units', b'--type=service',
+        #self._systemctl_path
+        proc = subprocess.Popen(['systemctl', b'list-units', b'--type=service',
                                      b'--plain', b'--no-legend',  # easier to parse
                                      b'--all'                     # not just active
                                      ], stdout=subprocess.PIPE )
@@ -802,30 +590,28 @@ class Rescanner(object):
             
             ret.append(unit)            
         return ret
-    
 
-    def rescan_systemdunits(self):
+
+    def rescan(self):
         """ Fetch list of matching unit names via journalctl_list(). """
-        if not self.is_systemd: # avoid work when we never found systemctl
-            return
-        #TODO: integrate proper whitelist/blacklist logic
         units_now = self.journalctl_list()
         new_units = set(units_now).difference( self.log_units )
-        if len(new_units)==0:
-            self.saw_new_units = False
-        else:
-            self.saw_new_units = True
-            if self.verbose >= 1:
-                print( "NEWLY MATCHING UNITS:   %s"%( ', '.join( sorted([v.replace('.service','') for v in new_units]) ))  )
-            #if self.verbose >= 2:
-            #    print( "  unit set now %s"%units_now )
         self.log_units = units_now
-
+        if len(new_units)>0:
+            #if self.verbose >= 1:
+            print("New units, now following %d"%len(self.log_units))
+            #if self.verbose >= 2:
+            #print( "NEWLY MATCHING UNITS:   %s"%( ', '.join( sorted([v.replace('.service','') for v in new_units]) ))  )
+            self.journalctlreader.change_units( self.log_units )
     
 
-                    
 
 if __name__=='__main__':
+    try: 
+        import setproctitle    # I like my tmux titles informative
+        setproctitle.setproctitle( os.path.basename(sys.argv[0]) )
+    except ImportError:
+        pass
 
     # only used in parameter parsing
     def parse_hms(v):
@@ -858,13 +644,7 @@ if __name__=='__main__':
             ret_sec += n
         return ret_sec
 
-
-    try: 
-        import setproctitle    # I like my tmux titles informative
-        setproctitle.setproctitle( os.path.basename(sys.argv[0]) )
-    except ImportError:
-        pass
-
+    quit = False
 
     try:
         parser = argparse.ArgumentParser()
@@ -878,7 +658,12 @@ if __name__=='__main__':
                                 help="by default we add the time field to journalctl lines. Specify this to turn that off. Also try to remove date-n-time from the start of messages (no promises there)")
         # CONSIDER: parameter to format that time
 
-        parser.add_argument("-S", "--strip-more",         action="store_true",  default=True, 
+        parser.add_argument("-J", "--no-journalctl",      action="store_false",  dest="do_journalctl", default=True,     help="Don't watch systemd units")
+        parser.add_argument("-F", "--no-files",           action="store_false",  dest="do_files",      default=True,     help="Don't watch for file logs")
+        parser.add_argument("-D", "--no-docker",          action="store_false",  dest="do_docker",     default=True,     help="Don't watch for docker logs")
+
+
+        parser.add_argument("-S", "--strip-more",         action="store_true",  dest="strip_more",  default=True, 
                                 help="Try to strip more uninformative things from the message, like the hostname")
 
         parser.add_argument("--check-interval",           action="store",       default="30s",
@@ -888,55 +673,148 @@ if __name__=='__main__':
         parser.add_argument("--home",                     action="store_true",  default=False,
                                 help="look for log-ish text files in homedir, defaults off since it's slow and may turn up crud.")
 
-        parser.add_argument("-g", "--grep",               action="store",       default=None,  help="only print messages containing substring")        
-        parser.add_argument("-G", "--grep-out",           action="store",       default=None,  help="don't print messages containing substring")
+        parser.add_argument("-g", "--grep",               action="store",       dest="grep",     default=None,  help="only print messages containing substring")        
+        parser.add_argument("-G", "--grep-out",           action="store",       dest="grepout",  default=None,  help="don't print messages containing substring")
         
         #parser.add_argument("-c", "--force-color",         action="store_true",  default=False,
         #                        help="force colors, even if context suggests it is not supported (potentially useful in pipes)")        
-        parser.add_argument("-C", "--no-color",           action="store_true",  default=False,
+        parser.add_argument("-C", "--no-color",           action="store_true",  dest="nocolor",  default=False,
                                 help="don't use color escapes, even when context seems to support it.")        
-        parser.add_argument("-t", "--true-color",         action="store_true",  default=False,
+        parser.add_argument("-t", "--true-color",         action="store_true",  dest="truecolor", default=False,
                                 help="use true-color escapes, for more colors when you know it's supported.")
         
         parser.add_argument('-v', "--verbose",            action="count",  default=0,   help="debug verbosity (repeat for debug)")
         args = parser.parse_args()
         
-        check_interval  = parse_hms( args.check_interval )
+        check_interval = parse_hms( args.check_interval )
+        check_interval = max(1,check_interval)
+
         recency_minutes = parse_hms( args.recency ) / 60.
         scan_dirs       = args.scandirs.split(',')
+        
         onlys, nots = [], []
         if args.onlys:
             onlys.extend( args.onlys.split(',') )
         if args.nots:
             nots.extend(  args.nots.split(',')  )
 
-        #if 'follow-cluster-logs' in sys.argv[0]:  # different behaviour if executable is linked as a different name
-        #    scan_dirs = []
-        #    add_home = 1
-        #    onlys.extend( ['OU','ER'] )
-        
-        if args.no_color:
+        if args.nocolor:
             sc = None
-            
-        s = Rescanner( scan_dirs          = scan_dirs,
-                       add_home           = args.home,
-                       recency_minutes    = recency_minutes,
-                       check_interval_sec = check_interval,
-                       onlys              = onlys,
-                       nots               = nots,
-                       grep               = args.grep,
-                       grepout            = args.grep_out,
-                       verbose            = args.verbose,
-                       truecolor          = args.true_color,
-                       show_time          = args.show_time,
-                       strip_more         = args.strip_more,
-        )
+
+
+
+        ## Decide on the printer callback ##########################################
+        def print_message(source, message):
+            " Unify printing style. "
+            if args.grep != None: # CONSIDER: interpret comma separated?
+                if args.grep not in message:
+                    return
+            elif args.grepout != None:
+                if args.grepout in message:
+                    return                
+
+            if not args.show_time:
+                # Try to remove dates from the start of messages. 
+                #   may remove too much if it were a generic matches, so I'm removing formats as I see them. 
+                #   this will always under-remove (because of "works on my system" logic), and more so in other locales.
+                #   It's better than nothing and I'd rather err on the side of not removing information
+                # CONSIDER: better ways of doing this, e.g. compiling patterns based on locale settings
+
+                # 'Dec 24 17:55:44'
+                message = re.sub(r'^([A-Za-z]{3}\s+[0-9]{1,2}\s[0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\s{0,1})','', message)
+                # '2021/12/24 17:55:15' and '2021/12/24-17:55:15'
+                message = re.sub(r'^([0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9][\s-][0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\s{0,2})','', message)
+                # '[2021-12-24  18:03:01]'
+                message = re.sub(r'^(\[[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\s+[0-9]{1,2}:[0-9][0-9]:[0-9][0-9]\]\s{0,2})','', message)
+                # '[Fri Dec 24 18:08:03.356792 2021]'
+                message = re.sub(r'^(\[[A-Za-z]{3,4}\s[A-Za-z]{3,4}\s[0-9]{1,2}\s[0-9]{1,2}:[0-9][0-9]:[0-9][0-9](?:[.][0-9]+)\s[0-9][0-9][0-9][0-9]\]\s{0,2})','', message)
+                # '2022-01-29T23:25:42.778+0100' ISO8601 and some technically-non-conforming variants
+                message = re.sub(r'^([\[]?[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]([.][0-9]{1,9})?([+-][0-9][0-9]:?[0-9][0-9]|Z)?[\]]?[\s]?)','', message)
+
+
+            if args.strip_more:
+                hostname_sp = platform.node()+' '
+                # strip hostname from start of message (consider it being followed by space, :)
+                if message.startswith( hostname_sp ): 
+                    message = message[ len(hostname_sp): ].strip()
+
+            align_source = '%25s'%source
+            if sc==None: # we specified --no-color, or that color helper wasn't there
+                sys.stdout.write( align_source )
+            else:
+                if args.truecolor:
+                    # TODO: we can currently pick near-block colors that don't show up when converted to 8-color by the likes of tmux. avoid that.
+                    sys.stdout.write( sc.hash_color( align_source, rgb=True ) )
+                else: # basic ~8 colors plus some bright variants (or none if the helper detected no color support)
+                    color_funcs = [ sc.blue, sc.red, sc.green, sc.cyan, sc.magenta, sc.yellow, sc.brightblue, sc.brightred, sc.brightcyan, sc.brightmagenta, sc.brightyellow, sc.brightgreen ]
+                    strhash = sum( ord(ch)  for ch in source )
+                    sys.stdout.write( color_funcs[strhash%len(color_funcs)]( align_source ) )
+            sys.stdout.write( ': ')
+            sys.stdout.write( message.rstrip() )
+            sys.stdout.write( '\n')
+            sys.stdout.flush()
         
-        print( "Looking for logs..." )
-        s.scan_and_follow()
+       
+
+        # Note: it's slightly easier to still instantiate them but then never use them based on do_* variables         
+        tf           = TailFollower(                print_message )
+        tf_rescanner = TailFollower_Rescanner(      tf, scan_dirs=['/var/log'], onlys=onlys, nots=nots, recency_minutes=recency_minutes, verbose=args.verbose )
+
+        df           = DockerLogFollower(           print_message )
+        df_rescanner = DockerLogFollower_Rescanner( df, docker_dirs=['/var/lib/docker/containers/'], onlys=onlys, nots=nots, recency_minutes=recency_minutes, verbose=args.verbose )
+        
+        jr           = JournalctlReader(            print_message, show_time=args.show_time )
+        jr_rescanner = JournalctlReader_Rescanner(  jr, onlys=onlys, nots=nots, verbose=args.verbose )
 
         
+
+        print( "Looking for logs..." )
+
+        ### Mail loop sort of thing ########################################
+        def background_rescanner_thread():
+            while True:
+                if args.do_files:
+                    if args.verbose >= 2:
+                        print( "Rescanning file logs" )
+                    tf_rescanner.rescan()
+                    
+                if args.do_docker:
+                    if args.verbose >= 2:
+                        print( "Rescanning docker logs" )
+                    df_rescanner.rescan()
+                
+                if args.do_journalctl:
+                    if args.verbose >= 2:
+                        print( "Rescanning journald units" )
+                    jr_rescanner.rescan()
+
+                # TODO: work in "changed to watch %d logs" messages
+
+                # TODO: work in "if there are 0 matching logs" logic again
+                if len( tf_rescanner.log_filenames )==0 and len( df_rescanner.docker_log_filenames )==0 and len(jr_rescanner.log_units)==0:
+                    print("NOTE: There are 0 logs that match")
+                time.sleep( check_interval )
+        
+        bg = threading.Thread( target=background_rescanner_thread )
+        bg.daemon = True
+        bg.start()
+
+        if args.do_journalctl:
+            def journalctl_reader_thread():
+                while not quit:
+                    jr.show_new_messages()
+                    time.sleep(0.5) # while there's no units we're watching on
+            jrt = threading.Thread( target=journalctl_reader_thread )
+            jrt.daemon = True        
+            jrt.start()
+
+        while not quit:
+            if args.do_files:
+                tf.per_file_work()
+            if args.do_docker:
+                df.per_file_work()
+            time.sleep(0.2)
+        
     except KeyboardInterrupt:
-        pass
-        # shutdown threads?
+        quit = True
 
