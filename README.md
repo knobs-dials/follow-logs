@@ -25,33 +25,32 @@ Where
 
 ## Arguments
 ```
-usage: follow-logs [-h] [--recency RECENCY] [-o ONLYS] [-n NOTS] [-T] [-J]
-                   [-F] [-D] [-S] [--check-interval CHECK_INTERVAL]
+usage: follow-logs [-h] [--recency RECENCY] [-o ONLYS] [-n NOTS] [-T] [-S]
+                   [-J] [-F] [-D] [--check-interval CHECK_INTERVAL]
                    [--scandirs SCANDIRS] [--home] [-g GREP] [-G GREPOUT] [-C]
                    [-t] [-v]
 
 optional arguments:
   -h, --help            show this help message and exit
-  --recency RECENCY     exclude logs with mtime/ctime older than this,
+  --recency RECENCY     Exclude logs with mtime/ctime older than this,
                         defaults to 1d
   -o ONLYS, --onlys ONLYS
-                        if specified, matches only names with one of these
+                        If specified, match only names with one of these
                         substrings (comma separated)
   -n NOTS, --nots NOTS  if specified, exclude names with one of these
                         substrings (comma separated). Will apply after
                         --recency and --only, if specified.
-  -T, --no-time         by default we add the time field to journalctl lines.
-                        Specify this to turn that off. Also try to remove
-                        date-n-time from the start of messages (no promises
-                        there)
+  -T, --no-time         By default we add the time field to journalctl lines.
+                        Specify this to turn that off, and try (no promises)
+                        to remove date-n-time from the start of messages
+  -S, --strip-more      Try to strip more uninformative things from the
+                        message, like the hostname
   -J, --no-journalctl   Don't watch systemd units
   -F, --no-files        Don't watch for file logs
   -D, --no-docker       Don't watch for docker logs
-  -S, --strip-more      Try to strip more uninformative things from the
-                        message, like the hostname
   --check-interval CHECK_INTERVAL
                         check for log source changes every this often,
-                        defaults to 30s
+                        defaults to 10s
   --scandirs SCANDIRS   paths to look for logs under, comma-separated,
                         defaults to /var/log/,/var/lib/log/
   --home                look for log-ish text files in homedir, defaults off
