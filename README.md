@@ -79,10 +79,6 @@ optional arguments:
 - think about optimizations. Scanning a /var/log with thousands of files is slow, hence the low-ish default scan interval 
   - In particular, consider inotify or similar
 
-- detangle code further, also to ease adding further log sources (e.g. docker logs)
-
-- parameters to disable looking for files or for systemd in the first place
-
 - CONSIDER: splitting this into a more library-like thing. If so, then also:
   - more uniform interface between the reader classes
   - callback is decent inversion, but maybe do this more event-stream-like? Not very important for this script, but I imagine others might find this code useful.
