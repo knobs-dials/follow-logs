@@ -3,7 +3,7 @@
   - from file logs
   - via systemd's journalctl
   - from docker's JSON logs
-- allows filtering of which filenames / unit names / container names to include or exclude, by substrings
+- allows filtering of which filenames, unit names, and container/image names to include or exclude, by substrings
   - filtering not yet implemented for docker, it currently follows all
 - Picks up new matching logs as they appear
 - unifies output format
@@ -82,4 +82,3 @@ optional arguments:
 - CONSIDER: splitting this into a more library-like thing. If so, then also:
   - more uniform interface between the reader classes
   - callback is decent inversion, but maybe do this more event-stream-like? Not very important for this script, but I imagine others might find this code useful.
-
