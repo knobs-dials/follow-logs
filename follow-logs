@@ -199,11 +199,11 @@ class TailFollower(object):
                 if so, close old and open new
             - check if file shrunk
                 if so, seek to end. Not 100% sure this is necessary for the OS but it helps consistency in our own seek logic
+
             - emitting lines from file we have open - based on when our seek position no longer matches the file's size
                 calls the callback, which in this script is the printer function
-       
-            TODO: separate the file stat()s from the "are there new lines" checks
-               ...though it's mostly stats on what is usually one or two dozen files, so not overly pricy
+
+            CONSIDER: rate limit the first three more than the last, to lower the amount of stat syscalls we do somewhat.
           '''
         # should deal with
         # - filename disappearing, and later reappearing (os.path.exists False somewhere. inode is not relevant)
@@ -306,18 +306,18 @@ class TailFollower_Rescanner(object):
                         if self.onlys!=None and len(self.onlys)>0: # onlys was specified, filter according to it
                             if not test_substr( fullpath, self.onlys):
                                 if self.verbose>=2:
-                                    print( "SKIP: %60r  Doesn't match onlys (%r)"%(fullpath,self.onlys) )
+                                    print( "SKIP file log: %60r  Doesn't match onlys (%r)"%(fullpath,self.onlys) )
                                 continue
 
                         if self.nots!=None and len(self.nots)>0: # nots was specified, filter according to it
                             if test_substr( fullpath, self.nots):
                                 if self.verbose>=2:
-                                    print( "SKIP: %60r  Matches nots (%r)"%(fullpath,self.nots) )
+                                    print( "SKIP file log: %60r  Matches nots (%r)"%(fullpath,self.nots) )
                                 continue
                             
                         if path_indicates_possible_log( fullpath ) == False:
                             if self.verbose >= 2:
-                                print( "%60r  Filename doesn't look like log"%fullpath )
+                                print( "SKIP file log: %60r  Filename doesn't look like log"%fullpath )
                             continue
                             
                         # above the content guess, below the filename based guess, because of relative cost
@@ -400,6 +400,7 @@ class DockerLogFollower(TailFollower):
 
 
 class DockerLogFollower_Rescanner(object):
+    ' Rescans, pokes changes into dockerfollower. Split out for consistency'
     def __init__(self, dockerfollower, docker_dirs, onlys=None, nots=None, recency_minutes=None, verbose=False):
         self.dockerfollower  = dockerfollower
         self.docker_dirs     = docker_dirs
@@ -424,8 +425,8 @@ class DockerLogFollower_Rescanner(object):
 
                     if self.recency_minutes:
                         if not file_is_recent(log_filename, recency_minutes=self.recency_minutes):
-                            #if self.verbose >= 2:
-                            print( "%60r  Not recent"%log_filename )
+                            if self.verbose >= 2:
+                                print( "%60r  Not recent"%log_filename )
                             continue
 
                     container_name = container_id[:12]
@@ -439,13 +440,13 @@ class DockerLogFollower_Rescanner(object):
                             if self.onlys!=None and len(self.onlys)>0: # onlys was specified, filter according to it
                                 if not test_substr( test_name, self.onlys):
                                     if self.verbose>=2:
-                                        print( "SKIP: %60r  Doesn't match onlys (%r)"%(test_name,self.onlys) )
+                                        print( "SKIP docker log: %60r  Doesn't match onlys (%r)"%(test_name,self.onlys) )
                                     continue
 
                             if self.nots!=None and len(self.nots)>0: # nots was specified, filter according to it
                                 if test_substr( test_name, self.nots):
                                     if self.verbose>=2:
-                                        print( "SKIP: %60r  Matches nots (%r)"%(test_name,self.nots) )
+                                        print( "SKIP docker log: %60r  Matches nots (%r)"%(test_name,self.nots) )
                                     continue
 
 
@@ -458,17 +459,13 @@ class DockerLogFollower_Rescanner(object):
         if len(new_files) > 0:
             #if self.verbose >= 1:
             print("New docker logs, now following %d"%len(self.docker_log_filenames))
-            #if self.verbose >= 2:
-            #print( self.docker_log_filenames )
             for filename in new_files:
-                #print(filename)
                 self.dockerfollower.add_filename( filename )
 
 
     
 class JournalctlReader(object):
     """ Listening and printing for journalctl.
-
         runs journalctl on given units.
     """
     def __init__(self, print_callback, show_time=False):
@@ -489,6 +486,7 @@ class JournalctlReader(object):
             cmd.extend( ['-u', unit] )
         self.proc = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE)
         
+
     def show_new_messages(self):
         ''' One cycle of dealing with new messages.
             You probably want to call this on a regular, short (<1sec) interval.        
@@ -499,9 +497,9 @@ class JournalctlReader(object):
             try:
                 d = json.loads(line)
 
-                ### I'm still figuring out which fields are present when. Documentation is barely helpful here...
-                # these are spammy
-                for debug_remove in ('__CURSOR', '_BOOT_ID', '_MACHINE_ID', '_HOSTNAME',
+                ## I'm still figuring out which fields are present when. Documentation is barely helpful here...
+
+                for debug_remove in ('__CURSOR', '_BOOT_ID', '_MACHINE_ID', '_HOSTNAME',    # these are spammy in general
                                     # '__REALTIME_TIMESTAMP', '__MONOTONIC_TIMESTAMP', '_SOURCE_MONOTONIC_TIMESTAMP', 
                                     ):
                     if debug_remove in d:
@@ -512,17 +510,14 @@ class JournalctlReader(object):
                 if msg==None: # ...why?
                     print( "MESSAGE missing in %r"%d ) # leaving this in to see what cases this is
                     return # I think we can ignore this, though?
-                
 
                 transport = d.get('_TRANSPORT',None)
                 if transport=='journal':
-                    #print( d ) # figuring out the fields
-                    sourcename = d.get('UNIT', 'unknown unit')        #sourcename = d.get('_SYSTEMD_UNIT',None) # this seems to be a scope.  Um, what?
+                    sourcename = d.get('UNIT', 'unknown unit')
                     if sourcename.endswith('.service'):
                         sourcename = sourcename[:-8]
                         
                 elif transport=='kernel':
-                    #print( d ) # figuring out the fields
                     t = d.get('_KERNEL_SUBSYSTEM') # not always present
                     if t==None:
                         t = d.get('SYSLOG_IDENTIFIER') # may be 'kernel'
@@ -535,7 +530,6 @@ class JournalctlReader(object):
                     sourcename = 'syslog/%s'%d.get('SYSLOG_IDENTIFIER')
 
                 elif transport=='stdout': # service's stdout, try to figure uot service name
-                    #print( d ) # figuring out the fields
                     t = d.get('_SYSTEMD_UNIT') # not always present
                     if t==None:
                         t = d.get('SYSLOG_IDENTIFIER') # may be 'kernel'
@@ -545,19 +539,18 @@ class JournalctlReader(object):
                         sourcename = '%s'%t
                     else:
                         sourcename = 'stdout'
-                    if type(msg) is type([]): # what the hell?
-                        msg = bytes(msg).decode('u8') # decode u8 is a guess, maybe add fallback
+                    if type(msg) is type([]): # um, what?
+                        msg = bytes(msg).decode('u8') # decode u8 is a guess, maybe add fallback?
                 
                 elif transport=='driver':
-                    #print( d ) # figuring out the fields
                     sourcename = 'driver'
                     
                 elif transport=='audit':
-                    #print( d ) # figuring out the fields
                     sourcename = 'audit'
                     
-                else: # right now no others exist (according to docs, at least).   Though might it be missing?
-                    #print( d ) # figuring out the fields
+                else: # right now no others exist, according to docs, at least.   Though is it possible to be empty?
+                    print( "unknown transport type: %r"%transport )
+                    print( d ) # figuring out the fields
                     sourcename = transport
 
                 if self.show_time:
@@ -574,6 +567,7 @@ class JournalctlReader(object):
 
 
 class JournalctlReader_Rescanner(object):
+    ' Rescans, pokes changes into journalreader. Split out for consistency'
 
     def __init__(self, journalctlreader, onlys=None, nots=None, verbose=False):
         self.journalctlreader = journalctlreader
@@ -592,11 +586,8 @@ class JournalctlReader_Rescanner(object):
 
     def journalctl_list(self, striptype=False):
         """ Helper for rescan_systemdunits():  call journalctl list-units, filter unit names.   """
-        #self._systemctl_path
-        proc = subprocess.Popen(['systemctl', b'list-units', b'--type=service',
-                                     b'--plain', b'--no-legend',  # easier to parse
-                                     b'--all'                     # not just active
-                                     ], stdout=subprocess.PIPE )
+        
+        proc = subprocess.Popen( [self._systemctl_path, b'list-units', b'--type=service', b'--plain', b'--no-legend', b'--all' ],  stdout=subprocess.PIPE )
         out, _ = proc.communicate()
         ret = []
         for line in out.splitlines():
@@ -606,26 +597,16 @@ class JournalctlReader_Rescanner(object):
             if striptype: # from returned unit names
                 unit = typeless
 
-            if self.onlys!=None and len(self.onlys)>0:
-                whitelist_condition = False
-                for filtstr in self.onlys:
-                    if filtstr in typeless:
-                        whitelist_condition = True
-                        break
-                if not whitelist_condition:
-                    if self.verbose >= 2:
-                        print( "%60r  Doesn't match whitelist"%unit )
+            if self.onlys!=None and len(self.onlys)>0: # onlys was specified, filter according to it
+                if not test_substr( typeless, self.onlys):
+                    if self.verbose>=2:
+                        print( "SKIP unit: %60r  Doesn't match onlys (%r)"%(typeless,self.onlys) )
                     continue
 
-            if self.nots!=None and len(self.nots)>0:
-                blacklist_condition = False
-                for filtstr in self.nots:
-                    if filtstr in typeless:
-                        blacklist_condition=True
-                        break
-                if blacklist_condition:
-                    if self.verbose >= 2:
-                        print( "%60r  Matches blacklist"%unit )
+            if self.nots!=None and len(self.nots)>0: # nots was specified, filter according to it
+                if test_substr( typeless, self.nots):
+                    if self.verbose>=2:
+                        print( "SKIP unit: %60r  Matches nots (%r)"%(typeless,self.nots) )
                     continue
             
             ret.append(unit)            
@@ -726,7 +707,7 @@ if __name__=='__main__':
                 sys.stdout.write( align_source )
             else:
                 if args.truecolor:
-                    # TODO: we can currently pick near-block colors that don't show up when converted to 8-color by the likes of tmux. avoid that.
+                    # TODO: we might currently pick near-black colors, that don't show up when converted to back to 8-color by the likes of tmux. avoid that.
                     sys.stdout.write( sc.hash_color( align_source, rgb=True ) )
                 else: # basic ~8 colors plus some bright variants (or none if the helper detected no color support)
                     color_funcs = [ sc.blue, sc.red, sc.green, sc.cyan, sc.magenta, sc.yellow, sc.brightblue, sc.brightred, sc.brightcyan, sc.brightmagenta, sc.brightyellow, sc.brightgreen ]
@@ -739,7 +720,7 @@ if __name__=='__main__':
        
 
         ### Main ########################################
-        # Note: it's slightly easier to still instantiate them but then never use them based on do_* variables         
+        # Note: it's slightly easier to still instantiate them but then never use them based on the do_* variables 
         tf           = TailFollower(                print_message )
         tf_rescanner = TailFollower_Rescanner(      tf, scan_dirs=['/var/log/'], onlys=onlys, nots=nots, recency_minutes=recency_minutes, verbose=args.verbose )
 
