@@ -72,6 +72,8 @@ optional arguments:
 
 
 ## TODO:
+- color by log level (though that would only work for systemd)
+ 
 - test our own file follower for weird edge cases
 
 - test whether the docker thing works as expected
