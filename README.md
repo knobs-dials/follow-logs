@@ -19,7 +19,7 @@ Negative filter ('not') : `-n access` goes a long way to show everything except 
 ![colored logs](/screenshots/somelogs.png?raw=true)
 
 Where
-  - systemd is indicated with [square brackets], docker with {curly brackets}, files without  
+  - systemd is indicated with [square brackets], docker with {curly brackets}, file logs without  
   - logs are consistently colored, by name, making it easier to skim the output
 
 
