@@ -74,6 +74,10 @@ optional arguments:
 ## TODO:
 - test our own file follower for weird edge cases
 
+- test whether the docker thing works as expected
+
+- decide what behaviour we want when we don't have admin permissions (and look at bordercases)
+
 - think of what systemd non-units to potentially show (e.g. .scope for login sessions may be nice to see)
 
 - think about optimizations. Scanning a /var/log with thousands of files is slow, hence the low-ish default scan interval 
