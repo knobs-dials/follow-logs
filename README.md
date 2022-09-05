@@ -3,7 +3,7 @@
   - from file logs
   - via systemd's journalctl
   - from docker's JSONL logs (TODO: test that this works at all)
-- allows filtering of which filenames, unit names, and container/image names to include or exclude, by substrings
+- allows filtering of which filenames / unit names / container/image names to include or exclude, by substrings
   - filtering not yet implemented for docker, it currently follows all
 - Picks up new matching logs as they appear
 - unifies output format
