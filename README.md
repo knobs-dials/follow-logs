@@ -2,8 +2,8 @@
 - Reads 
   - from file logs
   - via systemd's journalctl
-  - from docker's JSON logs
-- allows filtering of which filenames, unit names, and container/image names to include or exclude, by substrings
+  - from docker's JSONL logs (TODO: test that this works at all)
+- allows filtering of which filenames / unit names / container/image names to include or exclude, by substrings
   - filtering not yet implemented for docker, it currently follows all
 - Picks up new matching logs as they appear
 - unifies output format
@@ -19,7 +19,7 @@ Negative filter ('not') : `-n access` goes a long way to show everything except 
 ![colored logs](/screenshots/somelogs.png?raw=true)
 
 Where
-  - systemd is indicated with [square brackets], docker with {curly brackets}, files without  
+  - systemd is indicated with [square brackets], docker with {curly brackets}, file logs without  
   - logs are consistently colored, by name, making it easier to skim the output
 
 
@@ -72,7 +72,13 @@ optional arguments:
 
 
 ## TODO:
+- color by log level (though that would only work for systemd)
+ 
 - test our own file follower for weird edge cases
+
+- test whether the docker thing works as expected
+
+- decide what behaviour we want when we don't have admin permissions (and look at bordercases)
 
 - think of what systemd non-units to potentially show (e.g. .scope for login sessions may be nice to see)
 
