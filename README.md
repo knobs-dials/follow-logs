@@ -20,7 +20,7 @@ Negative filter ('not') : `-n access` goes a long way to show everything except 
 
 Where
   - systemd is indicated with [square brackets], docker with {curly brackets}, file logs without  
-  - logs are consistently colored, by name, making it easier to skim the output
+  - log names are consistently colored, by name, making it easier to skim the output
 
 
 ## Arguments
