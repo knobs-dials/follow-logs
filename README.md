@@ -1,6 +1,6 @@
 "Just show me all relevant logs" in fewer keystrokes.
 - Reads 
-  - from file logs
+  - from file logs, mostly in `/var/log`
   - via systemd's journalctl
   - from docker's JSONL logs (TODO: test that this works at all)
 - allows filtering of which filenames / unit names / container/image names to include or exclude, by substrings
