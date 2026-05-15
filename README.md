@@ -6,7 +6,8 @@
 - allows filtering of which filenames / unit names / container/image names to include or exclude, by substrings
   - filtering not yet implemented for docker, it currently follows all
 - Picks up new matching logs as they appear
-- unifies output format
+- allows filtering per line (grep-like)
+- outputs them in a similar format
 
 Also colors logs by source, for ease of skimming
 
