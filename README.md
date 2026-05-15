@@ -73,19 +73,22 @@ optional arguments:
 
 
 ## TODO:
-- color by log level (though that would only work for systemd)
- 
-- test our own file follower for weird edge cases
-
 - test whether the docker thing works as expected
+
+- test our own file follower for weird edge cases
 
 - decide what behaviour we want when we don't have admin permissions (and look at bordercases)
 
+## CONSIDER:
 - think of what systemd non-units to potentially show (e.g. .scope for login sessions may be nice to see)
 
-- think about optimizations. Scanning a /var/log with thousands of files is slow, hence the low-ish default scan interval 
-  - In particular, consider inotify or similar
+- output as JSONL or similar (to act as a log unifier for others)
 
-- CONSIDER: splitting this into a more library-like thing. If so, then also:
+- splitting this into a more library-like thing. If so, then also:
   - more uniform interface between the reader classes
   - callback is decent inversion, but maybe do this more event-stream-like? Not very important for this script, but I imagine others might find this code useful.
+
+- color by log level (though that would only work for systemd)
+ 
+- think about optimizations. Scanning a /var/log with thousands of files is slow, hence the low-ish default scan interval 
+  - In particular, consider inotify or similar
