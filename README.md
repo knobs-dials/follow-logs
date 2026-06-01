@@ -73,11 +73,14 @@ optional arguments:
 
 
 ## TODO:
+- decide reasonable response to 'too many open files' (errno 24)
+
 - test whether the docker thing works as expected
 
 - test our own file follower for weird edge cases
 
 - decide what behaviour we want when we don't have admin permissions (and look at bordercases)
+
 
 ## CONSIDER:
 - think of what systemd non-units to potentially show (e.g. .scope for login sessions may be nice to see)
